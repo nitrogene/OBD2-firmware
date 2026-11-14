@@ -187,6 +187,16 @@ When compiled/configured as ECU Simulator:
       └── guidelines.md         # AI/Human technical review protocol
   ```
 
+### Prerequisites & Local Build Setup
+- **ESP-IDF `v5.2+` (recommended `v5.5.6`, aligned with [`.github/workflows/ci.yml`](.github/workflows/ci.yml)):**
+  - **Windows:** [ESP-IDF Windows Installer](https://dl.espressif.com/dl/esp-idf/) (includes ESP-IDF, `xtensa-esp-elf` toolchain for `esp32s3`, CMake/Ninja, OpenOCD, and USB JTAG/CDC drivers) or the [VS Code ESP-IDF Extension](https://marketplace.visualstudio.com/items?itemName=espressif.esp-idf-extension).
+  - **Linux / macOS:** [ESP-IDF Standard Setup (`v5.5.6` / `esp32s3`)](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/get-started/linux-macos-setup.html).
+- **Python Host Tooling (`uv`, Python `>= 3.11`):**
+  - Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for host scripts and `pytest` (`uv sync`, then `uv run pytest`).
+- **Quick Commands (once Phase 1 structure is initialized):**
+  - Firmware build (in ESP-IDF PowerShell / sourced environment): `idf.py set-target esp32s3 && idf.py build`
+  - Host unit tests: `uv run pytest`
+
 ---
 
 ## 9. Technical Reviews

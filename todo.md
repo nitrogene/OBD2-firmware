@@ -10,6 +10,7 @@
 - [ ] Configure `sdkconfig.defaults` (ESP32-S3, 240 MHz CPU, 16 MB Flash, 2 MB Octal PSRAM, TWAI, Native USB CDC on `IO19`/`IO20`, BLE 5.0).
 - [ ] Implement `components/bsp/` with exact GPIO mapping (`IO1` `VBAT_SENSE`, `IO2` `LED_STATUS`, `IO4` `KLINE_RX`, `IO5` `KLINE_TX`, `IO15` `TWAI_TX`, `IO16` `TWAI_RX`).
 - [ ] Validate "Hello World" on physical hardware: `LED1` PWM patterns (`IO2`) and USB-C CDC serial console.
+- [ ] Implement a minimal `MODE_BRINGUP` / USB-C CDC self-test CLI (LED1 PWM, `VBAT_SENSE` readout, raw CAN `500 kbps` ping/pong, K-Line `10,400 baud` local echo & `25 ms` pulse) for dual-board hardware validation.
 - [ ] Verify CI `esp-idf-build` job (`.github/workflows/ci.yml`) passes on `esp32s3` after initial bootstrap.
 
 ## Phase 2 — Power Telemetry & Sleep Governance (`power_mgmt`)
