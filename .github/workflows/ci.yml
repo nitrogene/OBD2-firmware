@@ -17,13 +17,13 @@ concurrency:
 jobs:
   esp-idf-build:
     name: ESP-IDF Build (esp32s3)
-    if: hashFiles('CMakeLists.txt') != ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Build firmware with ESP-IDF
+        if: hashFiles('CMakeLists.txt') != ''
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5.6
@@ -32,22 +32,25 @@ jobs:
 
   python-tests:
     name: Python Host Tests (uv + pytest)
-    if: hashFiles('tests/**/*.py', '**/test_*.py') != ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install uv
+        if: hashFiles('tests/**/*.py', '**/test_*.py') != ''
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
       - name: Set up Python
+        if: hashFiles('tests/**/*.py', '**/test_*.py') != ''
         run: uv python install
 
       - name: Install dependencies
+        if: hashFiles('tests/**/*.py', '**/test_*.py') != ''
         run: uv sync --frozen
 
       - name: Run pytest
+        if: hashFiles('tests/**/*.py', '**/test_*.py') != ''
         run: uv run pytest
