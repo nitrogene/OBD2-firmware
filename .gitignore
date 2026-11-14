@@ -1,0 +1,54 @@
+# ESP-IDF Build & Config Artifacts
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+*.bin
+*.elf
+*.map
+*.uf2
+
+# C / C++ & CMake / Ninja
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+cmake-build-*/
+.ninja_deps
+.ninja_log
+build.ninja
+rules.ninja
+CTestTestfile.cmake
+Testing/
+.clangd/
+*.o
+*.obj
+*.d
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+
+# Python & uv
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+.cache/
+
+# IDE & OS
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
