@@ -15,9 +15,10 @@
 - [x] Verify CI `esp-idf-build` job (`.github/workflows/ci.yml`) passes on `esp32s3` after initial bootstrap.
 
 ## Phase 2 — Power Telemetry & Sleep Governance (`power_mgmt`)
-- [ ] Implement `ADC1_CH0` (`IO1`) calibrated sampling (`adc_oneshot` + `ADC_ATTEN_DB_12`, 32/64-sample moving average, `k = 12/112`).
-- [ ] Implement vehicle power state detection (USB-only `< 2.8 V`, critical `< 11.8 V`, resting `12.4–12.8 V`, engine running `13.8–14.6 V`, overvoltage `> 15.5 V`).
-- [ ] Implement 10-minute inactivity Deep Sleep and wake-up (`ext0`/`ext1` on bus activity or ULP threshold `> 13.2 V`).
+- [x] Implement `ADC1_CH0` (`IO1`) calibrated sampling (`adc_oneshot` + `ADC_ATTEN_DB_12`, 32/64-sample moving average, `k = 12/112`).
+- [x] Implement vehicle power state detection (USB-only `< 2.8 V`, critical `< 11.8 V`, resting `12.4–12.8 V`, engine running `13.8–14.6 V`, overvoltage `> 15.5 V`).
+- [x] Implement 10-minute inactivity Deep Sleep and wake-up (`ext0`/`ext1` on bus activity or ULP threshold `> 13.2 V`).
+- [ ] Validate Phase 2 on hardware (`power` / `vbat` CLI across USB-only, `12V` resting, `14V` running, `> 15.5V` SOS, and `power sleep` / `ext1` wake-up).
 
 ## Phase 3 — CAN / TWAI & ISO-TP (`twai_driver`, `isotp`)
 - [ ] Implement `components/twai_driver/` supporting 500 kbps and 250 kbps (11-bit and 29-bit IDs).

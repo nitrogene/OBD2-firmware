@@ -1,0 +1,5 @@
+idf_component_register(
+    SRCS "power_mgmt.c"
+    INCLUDE_DIRS "include"
+    REQUIRES bsp driver esp_timer
+)

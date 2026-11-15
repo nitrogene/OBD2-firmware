@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bsp.h"
+#include "power_mgmt.h"
 #include "driver/gpio.h"
 #include "driver/twai.h"
 #include "driver/uart.h"
@@ -92,6 +93,7 @@ static int cmd_vbat(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    power_mgmt_notify_activity();
 
     uint32_t adc_mv = 0;
     uint32_t vbat_mv = 0;
@@ -101,10 +103,39 @@ static int cmd_vbat(int argc, char **argv)
         return 1;
     }
 
-    printf("V_ADC = %lu mV | V_BAT = %lu mV (%.2f V)\n",
+    printf("V_ADC = %lu mV | V_BAT = %lu mV (%.2f V) [%s]\n",
            (unsigned long)adc_mv,
            (unsigned long)vbat_mv,
-           (double)vbat_mv / 1000.0);
+           (double)vbat_mv / 1000.0,
+           power_mgmt_state_to_str(power_classify_vbat_mv(vbat_mv)));
+    return 0;
+}
+
+static int cmd_power(int argc, char **argv)
+{
+    if (argc >= 2 && strcmp(argv[1], "sleep") == 0) {
+        printf("Entering Deep Sleep now (wake on IO%d / IO%d LOW)...\n",
+               (int)BSP_PIN_KLINE_RX, (int)BSP_PIN_TWAI_RX);
+        power_mgmt_enter_deep_sleep();
+    }
+
+    power_mgmt_notify_activity();
+    power_status_t st = {0};
+    esp_err_t err = power_mgmt_get_status(&st);
+    if (err != ESP_OK) {
+        printf("power_mgmt_get_status failed: %s\n", esp_err_to_name(err));
+        return 1;
+    }
+
+    printf("Power Telemetry (32-sample moving avg):\n");
+    printf("  State      : %s\n", power_mgmt_state_to_str(st.state));
+    printf("  V_BAT      : %lu mV (%.2f V)\n", (unsigned long)st.vbat_mv, (double)st.vbat_mv / 1000.0);
+    printf("  V_ADC      : %lu mV\n", (unsigned long)st.adc_mv);
+    printf("  Auto-sleep : %s (idle %lu / %lu s)\n",
+           st.auto_sleep_armed ? "ARMED" : "DISARMED",
+           (unsigned long)(st.inactivity_ms / 1000U),
+           (unsigned long)(POWER_INACTIVITY_TIMEOUT_MS / 1000U));
+    printf("  Wake cause : %d\n", (int)st.wakeup_cause);
     return 0;
 }
 
@@ -291,6 +322,12 @@ static void register_commands(void)
             .help = "Sample VBAT_SENSE (IO1 / ADC1_CH0)",
             .hint = NULL,
             .func = &cmd_vbat,
+        },
+        {
+            .command = "power",
+            .help = "Power telemetry & sleep governance: power [sleep]",
+            .hint = NULL,
+            .func = &cmd_power,
         },
         {
             .command = "can",
