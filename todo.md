@@ -36,11 +36,17 @@
 - [ ] Validate Phase 4 on hardware (`logic-analyzer` on `H1` for 5-baud & `25 ms` Fast-Init timings, dual-board K-Line echo, and real GM-Daewoo Kalos test).
 
 ## Phase 5 — ELM327 Emulation, ECU Simulator, Wireless Transports & Extended Mode (`elm327_emu`, `ecu_simulator`, `comm_ble`, `comm_wifi`)
-- [ ] Implement unified `transport_stream` abstraction (static ring buffers, zero dynamic allocation on hot paths, single-active-transport lock).
-- [ ] Implement `components/elm327_emu/` v1.5 parser (`>`, `\r`, `ATZ`/`ATI`/`ATWS`/`ATD`/`ATPC`, `ATE`/`ATL`/`ATS`/`ATH`, `ATRV` via `power_mgmt`, `ATSP`/`ATDP`/`ATDPN`, `ATAT`/`ATST`, `ATSH`/`ATCRA`/`ATCF`/`ATCM`, `ATCAF`/`ATFCSH`/`ATFCSD`/`ATFCSM`, `ATMA`, `ATSI`/`ATFI`, exact ELM327 status strings & `0:`/`1:` multi-line format).
-- [ ] Implement `components/ecu_simulator/` (`MODE_ECU_SIMULATOR`: cyclic CAN frames, Mode `01`–`04` responder on `0x7E8`, K-Line 5-baud & Fast-Init responder, CLI `set rpm`/`speed`/`coolant`/`fault inject`).
-- [ ] Implement `components/comm_ble/` (BLE 5.0 GATT UART `FFF0` `FFF1`/`FFF2` + alias `FFE0`/`FFE1`, configurable name, secure pairing, MTU negotiation, clean disconnect).
-- [ ] Implement `components/comm_wifi/` (SoftAP `192.168.0.10` + ELM327 TCP server port `35000`, NVS-configurable SSID/password, optional STA mode, OTA update & web config page).
-- [ ] Implement extended "custom" mode (enter/exit command, binary/SLCAN raw CAN/K-Line sniffer, UDS `0x10`/`0x22`/`0x2E`/`0x19`/`0x14`, bus error/load stats, NVS factory reset).
-- [ ] Run end-to-end validation (`python-OBD`, `ELM327-emulator`, Car Scanner / OBD Fusion, real GM-Daewoo Kalos K-Line test, disconnect/12V-drop robustness).
-- [ ] Extend CI (`.github/workflows/ci.yml` / `release.yml`) with formatting/lint checks (`clang-format`, `ruff`) and binary release artifacts on `v*` tags.
+- [x] Implement unified `transport_stream` abstraction (static ring buffers, zero dynamic allocation on hot paths, single-active-transport lock).
+- [x] Implement `components/elm327_emu/` v1.5 parser (`>`, `\r`, `ATZ`/`ATI`/`ATWS`/`ATD`/`ATPC`, `ATE`/`ATL`/`ATS`/`ATH`, `ATRV` via `power_mgmt`, `ATSP`/`ATDP`/`ATDPN`, `ATAT`/`ATST`, `ATSH`/`ATCRA`/`ATCF`/`ATCM`, `ATCAF`/`ATFCSH`/`ATFCSD`/`ATFCSM`, `ATMA`, `ATSI`/`ATFI`, exact ELM327 status strings & `0:`/`1:` multi-line format).
+- [x] Implement `components/ecu_simulator/` (`MODE_ECU_SIMULATOR`: cyclic CAN frames, Mode `01`–`04` responder on `0x7E8`, K-Line 5-baud & Fast-Init responder, CLI `set rpm`/`speed`/`coolant`/`fault inject`).
+- [x] Implement `components/comm_ble/` (BLE 5.0 GATT UART `FFF0` `FFF1`/`FFF2` + alias `FFE0`/`FFE1`, configurable name, secure pairing, MTU negotiation, clean disconnect).
+- [x] Implement `components/comm_wifi/` (SoftAP `192.168.0.10` + ELM327 TCP server port `35000`, NVS-configurable SSID/password, optional STA mode, OTA update & web config page).
+- [x] Implement extended "custom" mode (enter/exit command, binary/SLCAN raw CAN/K-Line sniffer, UDS `0x10`/`0x22`/`0x2E`/`0x19`/`0x14`, bus error/load stats, NVS factory reset).
+- [ ] Run end-to-end validation (`python-OBD`, `ELM327-emulator`, Car Scanner / OBD Fusion, real GM-Daewoo Kalos K-Line test, disconnect/12V-drop robustness). *(Host loopback TCP + C unit tests passing; hardware/app validation deferred to Phase 6 & bench tests.)*
+- [x] Extend CI (`.github/workflows/ci.yml` / `release.yml`) with formatting/lint checks (`clang-format`, `ruff`) and binary release artifacts on `v*` tags.
+
+## Phase 6 — Black-Box Bench on LilyGO TTGO T-Display S3 (`VIRTUAL_BENCH`)
+- [ ] Add optional `CONFIG_OBD2_VIRTUAL_BENCH` Kconfig/board profile for LilyGO T-Display S3 (disables physical CAN/K-Line pins shared with the TFT and routes `elm327_emu` / `obd2_stack` to the in-memory `ecu_simulator` + simulated `V_BAT`).
+- [ ] Add optional ST7789 TFT status screen (`esp_lcd`, active only under `CONFIG_OBD2_VIRTUAL_BENCH`) displaying active transport (`BLE`/`WiFi`/`USB`), simulated ECU metrics (`RPM`, speed, coolant, `V_BAT`, DTCs), and last `AT`/OBD RX-TX command.
+- [ ] Run black-box wireless validation on T-Display S3 (BLE `FFF0`/`FFE0` and Wi-Fi TCP `192.168.0.10:35000`): `ATZ`..`ATRV`, Mode `01` PIDs, multi-frame `0902` VIN, `03`/`04` DTC injection/clear, and disconnect/reconnect stress tests.
+- [ ] Validate compatibility with `python-OBD`, Car Scanner / OBD Fusion, and the custom Android client app (ELM327 + extended mode).

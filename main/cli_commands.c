@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bsp.h"
+#include "ecu_simulator.h"
 #include "isotp.h"
 #include "kline_driver.h"
 #include "kwp2000.h"
@@ -329,6 +330,81 @@ static int cmd_proto(int argc, char **argv)
     return 1;
 }
 
+static int cmd_sim(int argc, char **argv)
+{
+    ecu_sim_state_t *sim = ecu_simulator_state();
+    if (argc < 2 || strcmp(argv[1], "status") == 0) {
+        printf("ECU Sim: RPM=%u Speed=%u km/h Coolant=%d C DTCs=%u VIN=%s\n",
+               (unsigned)sim->rpm,
+               (unsigned)sim->speed_kmh,
+               (int)sim->coolant_c,
+               (unsigned)sim->dtc_count,
+               sim->vin);
+        return 0;
+    }
+
+    if (strcmp(argv[1], "clear") == 0) {
+        ecu_sim_clear_dtcs(sim);
+        printf("ECU Sim: DTCs cleared\n");
+        return 0;
+    }
+    if (strcmp(argv[1], "stop") == 0) {
+        ecu_simulator_stop_bus();
+        printf("ECU Sim: physical bus mode stopped\n");
+        return 0;
+    }
+    if (strcmp(argv[1], "start") == 0) {
+        bool can = (argc < 3 || strcmp(argv[2], "can") == 0 || strcmp(argv[2], "both") == 0);
+        bool kline = (argc < 3 || strcmp(argv[2], "kline") == 0 || strcmp(argv[2], "both") == 0);
+        esp_err_t err = ecu_simulator_start_bus(can, kline);
+        printf("ECU Sim: physical bus mode %s (%s)\n",
+               (err == ESP_OK) ? "started" : "failed",
+               esp_err_to_name(err));
+        return (err == ESP_OK) ? 0 : 1;
+    }
+
+    if (argc < 3) {
+        printf("Usage: sim <status|rpm <v>|speed <v>|coolant <v>|dtc <P0100>|clear>\n");
+        return 1;
+    }
+
+    if (strcmp(argv[1], "rpm") == 0) {
+        long val = strtol(argv[2], NULL, 10);
+        if (val < 0 || val > 16383) {
+            printf("Error: RPM must be 0..16383\n");
+            return 1;
+        }
+        ecu_sim_set_rpm(sim, (uint16_t)val);
+        printf("ECU Sim: RPM=%ld\n", val);
+    } else if (strcmp(argv[1], "speed") == 0) {
+        long val = strtol(argv[2], NULL, 10);
+        if (val < 0 || val > 255) {
+            printf("Error: speed must be 0..255 km/h\n");
+            return 1;
+        }
+        ecu_sim_set_speed(sim, (uint8_t)val);
+        printf("ECU Sim: Speed=%ld km/h\n", val);
+    } else if (strcmp(argv[1], "coolant") == 0) {
+        long val = strtol(argv[2], NULL, 10);
+        if (val < -40 || val > 215) {
+            printf("Error: coolant must be -40..215 C\n");
+            return 1;
+        }
+        ecu_sim_set_coolant(sim, (int16_t)val);
+        printf("ECU Sim: Coolant=%ld C\n", val);
+    } else if (strcmp(argv[1], "dtc") == 0) {
+        if (ecu_sim_inject_dtc(sim, argv[2]) != 0) {
+            printf("Error: invalid DTC '%s' or table full\n", argv[2]);
+            return 1;
+        }
+        printf("ECU Sim: injected DTC %s (count=%u)\n", argv[2], (unsigned)sim->dtc_count);
+    } else {
+        printf("Unknown subcommand '%s'\n", argv[1]);
+        return 1;
+    }
+    return 0;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -373,6 +449,12 @@ static void register_commands(void)
             .help = "Run ATSP0 auto-protocol detection (CAN + K-Line)",
             .hint = NULL,
             .func = &cmd_proto,
+        },
+        {
+            .command = "sim",
+            .help = "ECU simulator control: sim <status|rpm <v>|speed <v>|coolant <v>|dtc <P0100>|clear>",
+            .hint = NULL,
+            .func = &cmd_sim,
         },
     };
 

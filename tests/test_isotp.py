@@ -225,10 +225,15 @@ def pump_bus(scanner: VirtualEndpoint, ecu: VirtualEndpoint, step_ms: int = 1, m
         ecu.now_ms += step_ms
         assert scanner.poll() == ISOTP_OK
         assert ecu.poll() == ISOTP_OK
-        if not progressed and not scanner.tx_frames and not ecu.tx_frames:
+        if (
+            not progressed
+            and not scanner.tx_frames
+            and not ecu.tx_frames
+            and scanner.link.tx_state == 0
+            and ecu.link.tx_state == 0
+        ):
             # Stop once both sides are idle
-            if scanner.link.tx_state == 0 and ecu.link.tx_state == 0:
-                break
+            break
 
 
 def test_single_frame_padded_and_unpadded(isotp_lib: ctypes.CDLL) -> None:

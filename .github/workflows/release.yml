@@ -1,23 +1,20 @@
-name: Release
+name: Release Firmware
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    name: Build & Publish ESP32-S3 Firmware
+    name: Build ESP32-S3 Release Binaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Build firmware with ESP-IDF
         uses: espressif/esp-idf-ci-action@v1
@@ -26,27 +23,10 @@ jobs:
           target: esp32s3
           command: idf.py set-target esp32s3 build
 
-      - name: Stage release binaries
-        run: |
-          mkdir -p dist
-          cp build/bootloader/bootloader.bin dist/
-          cp build/partition_table/partition-table.bin dist/
-          cp build/obd2_firmware.bin dist/
-          cp build/flash_args dist/
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: obd2-firmware-esp32s3-${{ github.ref_name }}
-          path: dist/*
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
           files: |
-            dist/bootloader.bin
-            dist/partition-table.bin
-            dist/obd2_firmware.bin
-            dist/flash_args
+            build/obd2_firmware.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
