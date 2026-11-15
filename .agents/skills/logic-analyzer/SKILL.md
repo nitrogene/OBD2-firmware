@@ -1,18 +1,18 @@
 ---
 name: logic-analyzer
 description: >-
-  Capture and decode 3.3V logic signals on headers H1 (K-Line) and H2 (CAN/TWAI)
-  using a 24 MHz 8-channel FX2LP USB logic analyzer (sigrok-cli / fx2lafw),
+  100% Python capture and decode of 3.3V logic signals on headers H1 (K-Line) and
+  H2 (CAN/TWAI) using a 24 MHz 8-channel FX2LP USB logic analyzer (pyusb + libusb),
   plus offline synthetic self-tests without hardware.
-compatibility: sigrok-cli (fx2lafw), uv (Python >= 3.11), Windows / Linux / macOS
+compatibility: uv (Python >= 3.11), pyusb, libusb, Windows / Linux / macOS
 metadata:
   author: OBD2-Scanner-Dev
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-# Skill: 8-Channel USB Logic Analyzer (`logic-analyzer`)
+# Skill: 100% Python 8-Channel USB Logic Analyzer (`logic-analyzer`)
 
-Workflow for capturing and decoding `3.3V` logic signals from the OBD2-firmware board using a **24 MHz 8-channel FX2LP (`fx2lafw`) USB logic analyzer** and `sigrok-cli`.
+Pure-Python workflow (`pyusb` + bundled `libusb`) for capturing and decoding `3.3V` logic signals from the OBD2-firmware board using a **24 MHz 8-channel FX2LP USB logic analyzer** — no `sigrok-cli` required.
 
 > [!CAUTION]
 > **3.3V Logic Only:** Connect analyzer probes **only** to `3.3V` debug headers `H1` (`KLINE_RX`, `KLINE_TX`, `GND`), `H2` (`TWAI_RX`, `TWAI_TX`, `GND`), or `IO2` (`LED_STATUS`). Never connect probes directly to `K_LINE` (`12V`) or `CANH`/`CANL`.
@@ -32,44 +32,41 @@ Workflow for capturing and decoding `3.3V` logic signals from the OBD2-firmware 
 
 ---
 
-## 2. Tool Discovery & Windows Driver Setup
+## 2. Windows USB Driver Setup (One-Time)
 
-1. Check if `sigrok-cli` is installed (`Get-Command sigrok-cli` or `C:\Program Files\sigrok\sigrok-cli\sigrok-cli.exe`).
-2. If not installed on Windows, install `sigrok-cli` / PulseView (`sigrok.org`), and bind the FX2LP analyzer (`VID:PID 0925:3881` or `1d50:608c`) to the **WinUSB** driver using **Zadig** (required once on Windows for `fx2lafw`).
-3. Verify device detection:
+1. Plug in the 24 MHz 8-channel FX2LP analyzer.
+2. On Windows, bind the device (`VID:PID 0925:3881`, `04B4:8613`, or `1D50:608C`) to **WinUSB** using **Zadig**.
+3. Verify USB detection in Python:
    ```powershell
-   sigrok-cli --scan
+   uv run .agents/skills/logic-analyzer/scripts/fx2_capture.py --scan
    ```
 
 ---
 
-## 3. Capture & Decode Recipes (`fx2lafw`)
+## 3. 100% Python Capture & Decode Recipes
 
 * **K-Line `10,400 baud` TX + Echo (`H1`):**
   ```powershell
-  sigrok-cli -d fx2lafw --config samplerate=1M --time 1s -c D0=KLINE_TX,D1=KLINE_RX -o kline_echo.sr
-  sigrok-cli -i kline_echo.sr -P uart:rx=KLINE_TX:baudrate=10400 -P uart:rx=KLINE_RX:baudrate=10400
+  uv run .agents/skills/logic-analyzer/scripts/fx2_capture.py --rate 1000000 --time 1.0 --channels KLINE_TX,KLINE_RX --out kline_echo.csv
+  uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --mode kline-uart --file kline_echo.csv --rate 1000000
   ```
 * **K-Line `25 ms` Fast-Init Pulse (`H1`):**
   ```powershell
-  sigrok-cli -d fx2lafw --config samplerate=1M --time 2s -c D0=KLINE_TX,D1=KLINE_RX --triggers KLINE_TX=f -O csv -o kline_pulse.csv
+  uv run .agents/skills/logic-analyzer/scripts/fx2_capture.py --rate 1000000 --time 1.0 --channels KLINE_TX,KLINE_RX --out kline_pulse.csv
   uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --mode kline-pulse --file kline_pulse.csv --rate 1000000
   ```
 * **CAN `500 kbps` (`H2`):**
   ```powershell
-  sigrok-cli -d fx2lafw --config samplerate=8M --time 2s -c D2=TWAI_TX,D3=TWAI_RX --triggers TWAI_TX=f -o can_500k.sr
-  sigrok-cli -i can_500k.sr -P can:rx=TWAI_TX:bitrate=500000 -P can:rx=TWAI_RX:bitrate=500000
+  uv run .agents/skills/logic-analyzer/scripts/fx2_capture.py --rate 8000000 --time 1.0 --channels KLINE_TX,KLINE_RX,TWAI_TX,TWAI_RX --out can_500k.csv
+  uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --mode can --file can_500k.csv --rate 8000000 --bitrate 500000
   ```
 
 ---
 
 ## 4. Testing Without Hardware
 
-1. **Offline decoder/timing self-test (no analyzer or board required):**
-   ```powershell
-   uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --self-test
-   ```
-2. **Virtual `sigrok-cli` demo device (when `sigrok-cli` is installed):**
-   ```powershell
-   sigrok-cli -d demo --samples 1000 -O csv
-   ```
+Run both offline self-tests (no analyzer or ESP32-S3 board required):
+```powershell
+uv run .agents/skills/logic-analyzer/scripts/fx2_capture.py --self-test
+uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --self-test
+```

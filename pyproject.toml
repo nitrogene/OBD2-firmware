@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Host Python tooling, protocol decoders, and test scripts for ESP32-S3 OBD-II firmware"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "libusb>=1.0.30.post2",
+    "pyusb>=1.3.1",
+]
 
 [dependency-groups]
 dev = [

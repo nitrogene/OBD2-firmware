@@ -52,3 +52,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 *.log
+
+# Downloaded third-party FX2LP firmware cache
+.agents/skills/logic-analyzer/firmware/

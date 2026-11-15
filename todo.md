@@ -11,7 +11,7 @@
 - [x] Implement `components/bsp/` with exact GPIO mapping (`IO1` `VBAT_SENSE`, `IO2` `LED_STATUS`, `IO4` `KLINE_RX`, `IO5` `KLINE_TX`, `IO15` `TWAI_TX`, `IO16` `TWAI_RX`).
 - [ ] Validate "Hello World" on physical hardware: `LED1` PWM patterns (`IO2`) and USB-C CDC serial console.
 - [ ] Implement a minimal `MODE_BRINGUP` / USB-C CDC self-test CLI (LED1 PWM, `VBAT_SENSE` readout, raw CAN `500 kbps` ping/pong, K-Line `10,400 baud` local echo & `25 ms` pulse) for dual-board hardware validation.
-- [ ] Test `logic-analyzer` skill without a target board (`uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --self-test`, `sigrok-cli --scan` / WinUSB driver, and `fx2lafw` capture test).
+- [x] Test `logic-analyzer` skill without a target board (`uv run .agents/skills/logic-analyzer/scripts/analyze_capture.py --self-test`, `sigrok-cli --scan` / WinUSB driver, and `fx2lafw` capture test).
 - [ ] Execute hardware bring-up checklist ([`bringup.md`](bringup.md)) on physical board(s) (multimeter, 8-ch USB logic analyzer on `H1`/`H2`, dual-board CAN/K-Line bench).
 - [ ] Verify CI `esp-idf-build` job (`.github/workflows/ci.yml`) passes on `esp32s3` after initial bootstrap.
 
