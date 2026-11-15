@@ -58,6 +58,11 @@ const char *power_mgmt_state_to_str(power_state_t state);
 esp_err_t power_mgmt_init(void);
 
 /**
+ * @brief Run boot self-test diagnostics (reset reason, VBAT_SENSE ADC check).
+ */
+esp_err_t power_mgmt_boot_self_test(void);
+
+/**
  * @brief Get the latest thread-safe power telemetry snapshot.
  */
 esp_err_t power_mgmt_get_status(power_status_t *out_status);

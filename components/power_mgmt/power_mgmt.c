@@ -3,6 +3,8 @@
 #include "bsp.h"
 #include "driver/rtc_io.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -85,7 +87,13 @@ static void power_telemetry_task(void *arg)
     power_state_t prev_state = POWER_STATE_USB_ONLY;
     bool first_sample = true;
 
+    esp_err_t wdt_err = esp_task_wdt_add(NULL);
+    if (wdt_err != ESP_OK) {
+        ESP_LOGW(TAG, "TWDT add failed (%s)", esp_err_to_name(wdt_err));
+    }
+
     while (1) {
+        (void)esp_task_wdt_reset();
         uint32_t raw_adc_mv = 0;
         uint32_t raw_vbat_mv = 0;
 
@@ -142,6 +150,31 @@ static void power_telemetry_task(void *arg)
     }
 }
 
+esp_err_t power_mgmt_boot_self_test(void)
+{
+    esp_reset_reason_t reason = esp_reset_reason();
+    if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_INT_WDT || reason == ESP_RST_WDT) {
+        ESP_LOGW(TAG, "Previous reset was triggered by hardware watchdog (reason=%d)", (int)reason);
+    } else {
+        ESP_LOGI(TAG, "Boot reset reason=%d", (int)reason);
+    }
+
+    uint32_t adc_mv = 0;
+    uint32_t vbat_mv = 0;
+    esp_err_t err = bsp_vbat_read_mv(&adc_mv, &vbat_mv);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Boot self-test VBAT_SENSE failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    power_state_t st = power_classify_vbat_mv(vbat_mv);
+    ESP_LOGI(TAG, "Boot self-test: V_ADC=%lu mV, V_BAT=%lu mV (%s)",
+             (unsigned long)adc_mv,
+             (unsigned long)vbat_mv,
+             power_mgmt_state_to_str(st));
+    return ESP_OK;
+}
+
 esp_err_t power_mgmt_init(void)
 {
     s_mutex = xSemaphoreCreateMutex();
@@ -149,11 +182,27 @@ esp_err_t power_mgmt_init(void)
         return ESP_ERR_NO_MEM;
     }
 
+    const esp_task_wdt_config_t wdt_cfg = {
+        .timeout_ms = 5000,
+        .idle_core_mask = (1U << 0) | (1U << 1),
+        .trigger_panic = true,
+    };
+    esp_err_t wdt_err = esp_task_wdt_reconfigure(&wdt_cfg);
+    if (wdt_err == ESP_ERR_INVALID_STATE) {
+        wdt_err = esp_task_wdt_init(&wdt_cfg);
+    }
+    if (wdt_err != ESP_OK) {
+        ESP_LOGW(TAG, "TWDT config skipped (%s)", esp_err_to_name(wdt_err));
+    } else {
+        ESP_LOGI(TAG, "Hardware TWDT active (5000 ms timeout, panic on stall)");
+    }
+
     s_last_activity_us = esp_timer_get_time();
     s_status.wakeup_cause = esp_sleep_get_wakeup_cause();
     if (s_status.wakeup_cause != ESP_SLEEP_WAKEUP_UNDEFINED) {
         ESP_LOGI(TAG, "Woke up from Deep Sleep (cause=%d)", (int)s_status.wakeup_cause);
     }
+    (void)power_mgmt_boot_self_test();
 
     BaseType_t ok = xTaskCreate(power_telemetry_task, "power_telemetry", 3072, NULL, 3, NULL);
     if (ok != pdPASS) {

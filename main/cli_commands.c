@@ -118,6 +118,12 @@ static int cmd_power(int argc, char **argv)
                (int)BSP_PIN_KLINE_RX, (int)BSP_PIN_TWAI_RX);
         power_mgmt_enter_deep_sleep();
     }
+    if (argc >= 2 && strcmp(argv[1], "selftest") == 0) {
+        power_mgmt_notify_activity();
+        esp_err_t err = power_mgmt_boot_self_test();
+        printf("Boot self-test: %s\n", esp_err_to_name(err));
+        return (err == ESP_OK) ? 0 : 1;
+    }
 
     power_mgmt_notify_activity();
     power_status_t st = {0};
@@ -325,7 +331,7 @@ static void register_commands(void)
         },
         {
             .command = "power",
-            .help = "Power telemetry & sleep governance: power [sleep]",
+            .help = "Power telemetry & sleep governance: power [sleep|selftest]",
             .hint = NULL,
             .func = &cmd_power,
         },
