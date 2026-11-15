@@ -168,6 +168,7 @@ When compiled/configured as ECU Simulator:
   OBD2-firmware/
   ├── CMakeLists.txt
   ├── sdkconfig.defaults        # TWAI, USB CDC (IO19/IO20), BLE 5.0, 240 MHz, 16MB Flash, 2MB PSRAM
+  ├── bringup.md                # Hardware bring-up & dual-board bench validation guide
   ├── components/
   │   ├── bsp/                  # Board Support Package (GPIO pinout, LED1, ADC1)
   │   ├── twai_driver/          # Low-level TWAI driver & filters
@@ -196,6 +197,7 @@ When compiled/configured as ECU Simulator:
 - **Quick Commands (once Phase 1 structure is initialized):**
   - Firmware build (in ESP-IDF PowerShell / sourced environment): `idf.py set-target esp32s3 && idf.py build`
   - Host unit tests: `uv run pytest`
+  - Hardware bring-up checklist (multimeter, 8-ch logic analyzer, dual-board bench): see [`bringup.md`](bringup.md)
 
 ---
 
