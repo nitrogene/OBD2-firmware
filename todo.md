@@ -21,11 +21,9 @@
 - [x] Enable hardware task watchdog (TWDT) and optional boot self-test diagnostics.
 - [ ] Validate Phase 2 on hardware (`power` / `vbat` CLI across USB-only, `12V` resting, `14V` running, `> 15.5V` SOS, and `power sleep` / `ext1` wake-up).
 
-## Phase 3 — CAN / TWAI, ISO-TP & ELM327 Core (`twai_driver`, `isotp`, `elm327_emu`)
-- [ ] Implement unified `transport_stream` abstraction (static ring buffers, zero dynamic allocation on hot paths, single-active-transport lock).
-- [ ] Implement `components/elm327_emu/` v1.5 parser (`>`, `\r`, `ATZ`/`ATI`/`ATWS`/`ATD`/`ATPC`, `ATE`/`ATL`/`ATS`/`ATH`, `ATRV` via `power_mgmt`, `ATSP`/`ATDP`/`ATDPN`, `ATAT`/`ATST`, `ATSH`/`ATCRA`/`ATCF`/`ATCM`, `ATCAF`/`ATFCSH`/`ATFCSD`/`ATFCSM`, `ATMA`, `ATSI`/`ATFI`, exact ELM327 status strings & `0:`/`1:` multi-line format).
-- [ ] Implement `components/twai_driver/` supporting 500 kbps and 250 kbps (11-bit and 29-bit IDs), listen-only bitrate probe, hardware acceptance filters, bus-off recovery, and `ATMA` sniffer.
-- [ ] Implement `components/isotp/` (ISO 15765-2: Single Frame, First Frame, Flow Control, Consecutive Frame) + host Python unit tests (`uv run pytest`).
+## Phase 3 — CAN / TWAI & ISO-TP (`twai_driver`, `isotp`)
+- [x] Implement `components/twai_driver/` supporting 500 kbps and 250 kbps (11-bit and 29-bit IDs), listen-only bitrate probe, hardware acceptance filters, bus-off recovery, and raw monitor sniffer.
+- [x] Implement `components/isotp/` (ISO 15765-2: Single Frame, First Frame, Flow Control, Consecutive Frame) + host Python unit tests (`uv run pytest`).
 - [ ] Verify CI `python-tests` job (`.github/workflows/ci.yml`) runs ISO-TP `pytest` suite and add host C unit tests if applicable.
 - [ ] Validate 500 kbps CAN echo on dual-board mirror bench (`JP1` CLOSED on both boards).
 
@@ -35,7 +33,9 @@
 - [ ] Implement `ATSP0` auto-protocol detection (listen-only CAN 11b/29b 500k/250k -> KWP Fast/Slow -> ISO 9141-2) with NVS persistence of last working protocol.
 - [ ] Implement `components/obd2_stack/` (SAE J1979 Modes `01`–`09`), `components/kwp2000/` (GM-Daewoo multi-module `0x21`/`0x22`, `0x30`, `0x18`/`0x14`), and default block on sensitive services (`0x27`, `0x34`/`0x36`) outside unlocked extended mode.
 
-## Phase 5 — ECU Simulator, Wireless ELM327 Transports & Extended Mode (`ecu_simulator`, `comm_ble`, `comm_wifi`)
+## Phase 5 — ELM327 Emulation, ECU Simulator, Wireless Transports & Extended Mode (`elm327_emu`, `ecu_simulator`, `comm_ble`, `comm_wifi`)
+- [ ] Implement unified `transport_stream` abstraction (static ring buffers, zero dynamic allocation on hot paths, single-active-transport lock).
+- [ ] Implement `components/elm327_emu/` v1.5 parser (`>`, `\r`, `ATZ`/`ATI`/`ATWS`/`ATD`/`ATPC`, `ATE`/`ATL`/`ATS`/`ATH`, `ATRV` via `power_mgmt`, `ATSP`/`ATDP`/`ATDPN`, `ATAT`/`ATST`, `ATSH`/`ATCRA`/`ATCF`/`ATCM`, `ATCAF`/`ATFCSH`/`ATFCSD`/`ATFCSM`, `ATMA`, `ATSI`/`ATFI`, exact ELM327 status strings & `0:`/`1:` multi-line format).
 - [ ] Implement `components/ecu_simulator/` (`MODE_ECU_SIMULATOR`: cyclic CAN frames, Mode `01`–`04` responder on `0x7E8`, K-Line 5-baud & Fast-Init responder, CLI `set rpm`/`speed`/`coolant`/`fault inject`).
 - [ ] Implement `components/comm_ble/` (BLE 5.0 GATT UART `FFF0` `FFF1`/`FFF2` + alias `FFE0`/`FFE1`, configurable name, secure pairing, MTU negotiation, clean disconnect).
 - [ ] Implement `components/comm_wifi/` (SoftAP `192.168.0.10` + ELM327 TCP server port `35000`, NVS-configurable SSID/password, optional STA mode, OTA update & web config page).

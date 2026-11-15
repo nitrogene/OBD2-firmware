@@ -5,7 +5,9 @@
 #include <string.h>
 
 #include "bsp.h"
+#include "isotp.h"
 #include "power_mgmt.h"
+#include "twai_driver.h"
 #include "driver/gpio.h"
 #include "driver/twai.h"
 #include "driver/uart.h"
@@ -148,48 +150,49 @@ static int cmd_power(int argc, char **argv)
 static int cmd_can(int argc, char **argv)
 {
     if (argc < 2) {
-        printf("Usage: can <ping|pong|rx> [timeout_ms]\n");
+        printf("Usage: can <ping|pong|rx|probe> [timeout_ms]\n");
         return 1;
     }
 
     const char *sub = argv[1];
     uint32_t timeout_ms = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 10) : 2000U;
+    power_mgmt_notify_activity();
 
-    const twai_general_config_t g_cfg = TWAI_GENERAL_CONFIG_DEFAULT(
-        BSP_PIN_TWAI_TX, BSP_PIN_TWAI_RX, TWAI_MODE_NORMAL);
-    const twai_timing_config_t t_cfg = TWAI_TIMING_CONFIG_500KBITS();
-    const twai_filter_config_t f_cfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-
-    esp_err_t err = twai_driver_install(&g_cfg, &t_cfg, &f_cfg);
-    if (err != ESP_OK) {
-        printf("TWAI install failed: %s\n", esp_err_to_name(err));
+    if (strcmp(sub, "probe") == 0) {
+        twai_drv_bitrate_t detected = TWAI_DRV_BITRATE_500K;
+        esp_err_t err = twai_drv_probe_bitrate(timeout_ms, &detected);
+        if (err == ESP_OK) {
+            printf("CAN listen-only probe: %d bps\n", (int)detected);
+            return 0;
+        }
+        printf("CAN listen-only probe: no traffic (%s)\n", esp_err_to_name(err));
         return 1;
     }
-    err = twai_start();
+
+    esp_err_t err = twai_drv_init(TWAI_DRV_BITRATE_500K, TWAI_DRV_MODE_NORMAL, NULL);
     if (err != ESP_OK) {
-        printf("TWAI start failed: %s\n", esp_err_to_name(err));
-        (void)twai_driver_uninstall();
+        printf("TWAI init failed: %s\n", esp_err_to_name(err));
         return 1;
     }
 
     int rc = 0;
     if (strcmp(sub, "ping") == 0) {
-        twai_message_t tx = {
-            .identifier = 0x7DF,
-            .data_length_code = 8,
+        twai_drv_frame_t tx = {
+            .id = 0x7DF,
+            .dlc = 8,
             .data = {0x02, 0x01, 0x00, 0x55, 0x55, 0x55, 0x55, 0x55},
         };
-        err = twai_transmit(&tx, pdMS_TO_TICKS(500));
+        err = twai_drv_send(&tx, 500);
         if (err != ESP_OK) {
             printf("CAN TX 0x7DF failed: %s\n", esp_err_to_name(err));
             rc = 1;
         } else {
             printf("CAN TX 0x7DF OK, waiting %lu ms for pong...\n", (unsigned long)timeout_ms);
-            twai_message_t rx = {0};
-            err = twai_receive(&rx, pdMS_TO_TICKS(timeout_ms));
+            twai_drv_frame_t rx = {0};
+            err = twai_drv_receive(&rx, timeout_ms);
             if (err == ESP_OK) {
                 printf("CAN RX ID=0x%03lX DLC=%d data=%02X %02X %02X %02X\n",
-                       (unsigned long)rx.identifier, rx.data_length_code,
+                       (unsigned long)rx.id, rx.dlc,
                        rx.data[0], rx.data[1], rx.data[2], rx.data[3]);
             } else {
                 printf("CAN RX timeout/error: %s\n", esp_err_to_name(err));
@@ -198,16 +201,16 @@ static int cmd_can(int argc, char **argv)
         }
     } else if (strcmp(sub, "pong") == 0) {
         printf("CAN listening for ping (%lu ms)...\n", (unsigned long)timeout_ms);
-        twai_message_t rx = {0};
-        err = twai_receive(&rx, pdMS_TO_TICKS(timeout_ms));
+        twai_drv_frame_t rx = {0};
+        err = twai_drv_receive(&rx, timeout_ms);
         if (err == ESP_OK) {
-            printf("CAN RX ID=0x%03lX, replying 0x7E8...\n", (unsigned long)rx.identifier);
-            twai_message_t tx = {
-                .identifier = 0x7E8,
-                .data_length_code = 8,
+            printf("CAN RX ID=0x%03lX, replying 0x7E8...\n", (unsigned long)rx.id);
+            twai_drv_frame_t tx = {
+                .id = 0x7E8,
+                .dlc = 8,
                 .data = {0x06, 0x41, 0x00, 0xBF, 0x9F, 0xA8, 0x93, 0xAA},
             };
-            err = twai_transmit(&tx, pdMS_TO_TICKS(500));
+            err = twai_drv_send(&tx, 500);
             printf("CAN TX 0x7E8: %s\n", esp_err_to_name(err));
             if (err != ESP_OK) {
                 rc = 1;
@@ -218,11 +221,11 @@ static int cmd_can(int argc, char **argv)
         }
     } else if (strcmp(sub, "rx") == 0) {
         printf("CAN RX listen (%lu ms)...\n", (unsigned long)timeout_ms);
-        twai_message_t rx = {0};
-        err = twai_receive(&rx, pdMS_TO_TICKS(timeout_ms));
+        twai_drv_frame_t rx = {0};
+        err = twai_drv_receive(&rx, timeout_ms);
         if (err == ESP_OK) {
             printf("CAN RX ID=0x%03lX ext=%d DLC=%d\n",
-                   (unsigned long)rx.identifier, rx.extd, rx.data_length_code);
+                   (unsigned long)rx.id, rx.extd ? 1 : 0, rx.dlc);
         } else {
             printf("CAN RX: %s\n", esp_err_to_name(err));
             rc = 1;
@@ -232,8 +235,7 @@ static int cmd_can(int argc, char **argv)
         rc = 1;
     }
 
-    (void)twai_stop();
-    (void)twai_driver_uninstall();
+    (void)twai_drv_deinit();
     return rc;
 }
 
