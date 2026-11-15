@@ -24,14 +24,16 @@
 ## Phase 3 — CAN / TWAI & ISO-TP (`twai_driver`, `isotp`)
 - [x] Implement `components/twai_driver/` supporting 500 kbps and 250 kbps (11-bit and 29-bit IDs), listen-only bitrate probe, hardware acceptance filters, bus-off recovery, and raw monitor sniffer.
 - [x] Implement `components/isotp/` (ISO 15765-2: Single Frame, First Frame, Flow Control, Consecutive Frame) + host Python unit tests (`uv run pytest`).
-- [ ] Verify CI `python-tests` job (`.github/workflows/ci.yml`) runs ISO-TP `pytest` suite and add host C unit tests if applicable.
+- [x] Verify CI `python-tests` job (`.github/workflows/ci.yml`) runs ISO-TP `pytest` suite and add host C unit tests if applicable.
 - [ ] Validate 500 kbps CAN echo on dual-board mirror bench (`JP1` CLOSED on both boards).
 
 ## Phase 4 — K-Line, Auto-Detection & Diagnostic Protocols (`kline_driver`, `obd2_stack`, `kwp2000`)
-- [ ] Implement `components/kline_driver/` at 10,400 baud 8N1 with local TX-to-RX echo collision filtering, checksums, P1–P4 timings, and periodic keep-alive.
-- [ ] Implement 5-Baud Slow Init (bit-bang `IO5`: `0x33`/`0x11` -> `0x55` -> `KB1`/`KB2` ISO 9141 `08 08` vs KWP `94 94` -> `~KB2`) and Fast-Init (`25 ms` `T_inil` / `T_wup` -> `StartCommunication`).
-- [ ] Implement `ATSP0` auto-protocol detection (listen-only CAN 11b/29b 500k/250k -> KWP Fast/Slow -> ISO 9141-2) with NVS persistence of last working protocol.
-- [ ] Implement `components/obd2_stack/` (SAE J1979 Modes `01`–`09`), `components/kwp2000/` (GM-Daewoo multi-module `0x21`/`0x22`, `0x30`, `0x18`/`0x14`), and default block on sensitive services (`0x27`, `0x34`/`0x36`) outside unlocked extended mode.
+- [x] Implement `components/kline_driver/` at 10,400 baud 8N1 with local TX-to-RX echo collision filtering, checksums, P1–P4 timings, and periodic keep-alive.
+- [x] Implement 5-Baud Slow Init (bit-bang `IO5`: `0x33`/`0x11` -> `0x55` -> `KB1`/`KB2` ISO 9141 `08 08` vs KWP `94 94` -> `~KB2`) and Fast-Init (`25 ms` `T_inil` / `T_wup` -> `StartCommunication`).
+- [x] Implement `ATSP0` auto-protocol detection (listen-only CAN 11b/29b 500k/250k -> KWP Fast/Slow -> ISO 9141-2) with NVS persistence of last working protocol.
+- [x] Implement `components/obd2_stack/` (SAE J1979 Modes `01`–`09`), `components/kwp2000/` (GM-Daewoo multi-module `0x21`/`0x22`, `0x30`, `0x18`/`0x14`), and default block on sensitive services (`0x27`, `0x34`/`0x36`) outside unlocked extended mode.
+- [x] Add host Python unit tests (`uv run pytest` via `ctypes` on pure C) for K-Line checksum/framing, `obd2_stack` PID/DTC encoding, `kwp2000` services, and security gating (`0x27`/`0x34`/`0x36`), verified in CI `python-tests`.
+- [ ] Validate Phase 4 on hardware (`logic-analyzer` on `H1` for 5-baud & `25 ms` Fast-Init timings, dual-board K-Line echo, and real GM-Daewoo Kalos test).
 
 ## Phase 5 — ELM327 Emulation, ECU Simulator, Wireless Transports & Extended Mode (`elm327_emu`, `ecu_simulator`, `comm_ble`, `comm_wifi`)
 - [ ] Implement unified `transport_stream` abstraction (static ring buffers, zero dynamic allocation on hot paths, single-active-transport lock).

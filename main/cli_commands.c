@@ -6,6 +6,9 @@
 
 #include "bsp.h"
 #include "isotp.h"
+#include "kline_driver.h"
+#include "kwp2000.h"
+#include "obd2_autodetect.h"
 #include "power_mgmt.h"
 #include "twai_driver.h"
 #include "driver/gpio.h"
@@ -310,6 +313,22 @@ static int cmd_kline(int argc, char **argv)
     return 1;
 }
 
+static int cmd_proto(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    power_mgmt_notify_activity();
+
+    obd2_proto_id_t detected = OBD2_PROTO_AUTO;
+    esp_err_t err = obd2_autodetect_run(&detected);
+    if (err == ESP_OK) {
+        printf("ATSP0 detected: %s (%d)\n", obd2_proto_name(detected), (int)detected);
+        return 0;
+    }
+    printf("ATSP0 no ECU found: %s\n", esp_err_to_name(err));
+    return 1;
+}
+
 static void register_commands(void)
 {
     const esp_console_cmd_t cmds[] = {
@@ -348,6 +367,12 @@ static void register_commands(void)
             .help = "10,400 baud K-Line bringup: kline <echo|pulse>",
             .hint = NULL,
             .func = &cmd_kline,
+        },
+        {
+            .command = "proto",
+            .help = "Run ATSP0 auto-protocol detection (CAN + K-Line)",
+            .hint = NULL,
+            .func = &cmd_proto,
         },
     };
 
