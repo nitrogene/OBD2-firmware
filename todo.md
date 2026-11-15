@@ -18,21 +18,27 @@
 - [x] Implement `ADC1_CH0` (`IO1`) calibrated sampling (`adc_oneshot` + `ADC_ATTEN_DB_12`, 32/64-sample moving average, `k = 12/112`).
 - [x] Implement vehicle power state detection (USB-only `< 2.8 V`, critical `< 11.8 V`, resting `12.4–12.8 V`, engine running `13.8–14.6 V`, overvoltage `> 15.5 V`).
 - [x] Implement 10-minute inactivity Deep Sleep and wake-up (`ext0`/`ext1` on bus activity or ULP threshold `> 13.2 V`).
+- [ ] Enable hardware task watchdog (TWDT) and optional boot self-test diagnostics.
 - [ ] Validate Phase 2 on hardware (`power` / `vbat` CLI across USB-only, `12V` resting, `14V` running, `> 15.5V` SOS, and `power sleep` / `ext1` wake-up).
 
-## Phase 3 — CAN / TWAI & ISO-TP (`twai_driver`, `isotp`)
-- [ ] Implement `components/twai_driver/` supporting 500 kbps and 250 kbps (11-bit and 29-bit IDs).
+## Phase 3 — CAN / TWAI, ISO-TP & ELM327 Core (`twai_driver`, `isotp`, `elm327_emu`)
+- [ ] Implement unified `transport_stream` abstraction (static ring buffers, zero dynamic allocation on hot paths, single-active-transport lock).
+- [ ] Implement `components/elm327_emu/` v1.5 parser (`>`, `\r`, `ATZ`/`ATI`/`ATWS`/`ATD`/`ATPC`, `ATE`/`ATL`/`ATS`/`ATH`, `ATRV` via `power_mgmt`, `ATSP`/`ATDP`/`ATDPN`, `ATAT`/`ATST`, `ATSH`/`ATCRA`/`ATCF`/`ATCM`, `ATCAF`/`ATFCSH`/`ATFCSD`/`ATFCSM`, `ATMA`, `ATSI`/`ATFI`, exact ELM327 status strings & `0:`/`1:` multi-line format).
+- [ ] Implement `components/twai_driver/` supporting 500 kbps and 250 kbps (11-bit and 29-bit IDs), listen-only bitrate probe, hardware acceptance filters, bus-off recovery, and `ATMA` sniffer.
 - [ ] Implement `components/isotp/` (ISO 15765-2: Single Frame, First Frame, Flow Control, Consecutive Frame) + host Python unit tests (`uv run pytest`).
 - [ ] Verify CI `python-tests` job (`.github/workflows/ci.yml`) runs ISO-TP `pytest` suite and add host C unit tests if applicable.
 - [ ] Validate 500 kbps CAN echo on dual-board mirror bench (`JP1` CLOSED on both boards).
 
-## Phase 4 — K-Line & Diagnostic Protocols (`kline_driver`, `obd2_stack`, `kwp2000`)
-- [ ] Implement `components/kline_driver/` at 10,400 baud with local TX-to-RX echo filtering.
-- [ ] Implement 5-Baud Slow Init (bit-bang `IO5`) and Fast-Init (25 ms `T_inil` / `T_wup`).
-- [ ] Implement `components/obd2_stack/` (SAE J1979 Modes `01`–`09`) and `components/kwp2000/` (GM-Daewoo multi-module services `0x21`/`0x22`, `0x30`, `0x18`/`0x14`).
+## Phase 4 — K-Line, Auto-Detection & Diagnostic Protocols (`kline_driver`, `obd2_stack`, `kwp2000`)
+- [ ] Implement `components/kline_driver/` at 10,400 baud 8N1 with local TX-to-RX echo collision filtering, checksums, P1–P4 timings, and periodic keep-alive.
+- [ ] Implement 5-Baud Slow Init (bit-bang `IO5`: `0x33`/`0x11` -> `0x55` -> `KB1`/`KB2` ISO 9141 `08 08` vs KWP `94 94` -> `~KB2`) and Fast-Init (`25 ms` `T_inil` / `T_wup` -> `StartCommunication`).
+- [ ] Implement `ATSP0` auto-protocol detection (listen-only CAN 11b/29b 500k/250k -> KWP Fast/Slow -> ISO 9141-2) with NVS persistence of last working protocol.
+- [ ] Implement `components/obd2_stack/` (SAE J1979 Modes `01`–`09`), `components/kwp2000/` (GM-Daewoo multi-module `0x21`/`0x22`, `0x30`, `0x18`/`0x14`), and default block on sensitive services (`0x27`, `0x34`/`0x36`) outside unlocked extended mode.
 
-## Phase 5 — ECU Simulator & Host Connectivity (`ecu_simulator`, `comm_ble`, `comm_wifi`)
-- [ ] Implement `components/ecu_simulator/` (`MODE_ECU_SIMULATOR`: cyclic CAN frames, Mode `01`–`04` responder, K-Line responder, CLI `set rpm`/`speed`/`coolant`/`fault inject`).
-- [ ] Implement `components/comm_ble/` (BLE 5.0 GATT: `CHAR_VEHICLE_DATA`, `CHAR_COMMAND_IN`, `CHAR_BATTERY_VOLTAGE`).
-- [ ] Implement `components/comm_wifi/` (SoftAP `OBD2-Scanner-XXXX` / WebSocket HTML5 dashboard).
+## Phase 5 — ECU Simulator, Wireless ELM327 Transports & Extended Mode (`ecu_simulator`, `comm_ble`, `comm_wifi`)
+- [ ] Implement `components/ecu_simulator/` (`MODE_ECU_SIMULATOR`: cyclic CAN frames, Mode `01`–`04` responder on `0x7E8`, K-Line 5-baud & Fast-Init responder, CLI `set rpm`/`speed`/`coolant`/`fault inject`).
+- [ ] Implement `components/comm_ble/` (BLE 5.0 GATT UART `FFF0` `FFF1`/`FFF2` + alias `FFE0`/`FFE1`, configurable name, secure pairing, MTU negotiation, clean disconnect).
+- [ ] Implement `components/comm_wifi/` (SoftAP `192.168.0.10` + ELM327 TCP server port `35000`, NVS-configurable SSID/password, optional STA mode, OTA update & web config page).
+- [ ] Implement extended "custom" mode (enter/exit command, binary/SLCAN raw CAN/K-Line sniffer, UDS `0x10`/`0x22`/`0x2E`/`0x19`/`0x14`, bus error/load stats, NVS factory reset).
+- [ ] Run end-to-end validation (`python-OBD`, `ELM327-emulator`, Car Scanner / OBD Fusion, real GM-Daewoo Kalos K-Line test, disconnect/12V-drop robustness).
 - [ ] Extend CI (`.github/workflows/ci.yml` / `release.yml`) with formatting/lint checks (`clang-format`, `ruff`) and binary release artifacts on `v*` tags.
