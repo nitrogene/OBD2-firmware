@@ -13,6 +13,7 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "power_mgmt.h"
 #include "transport_stream.h"
@@ -50,7 +51,22 @@ static const char *TAG = "vbench_ui";
 
 static esp_lcd_panel_handle_t s_panel = NULL;
 static uint16_t *s_band_buf = NULL;
+static SemaphoreHandle_t s_dma_done_sem = NULL;
 static char s_last_cmd[36] = "READY";
+
+static bool vbench_on_trans_done(esp_lcd_panel_io_handle_t panel_io,
+                                 esp_lcd_panel_io_event_data_t *edata,
+                                 void *user_ctx)
+{
+    (void)panel_io;
+    (void)edata;
+    (void)user_ctx;
+    BaseType_t hp_woken = pdFALSE;
+    if (s_dma_done_sem != NULL) {
+        xSemaphoreGiveFromISR(s_dma_done_sem, &hp_woken);
+    }
+    return hp_woken == pdTRUE;
+}
 
 /* Minimal 5x7 ASCII font (0x20..0x5F, uppercase + digits + punctuation) */
 static const uint8_t s_font5x7[64][5] = {
@@ -120,6 +136,14 @@ static const uint8_t s_font5x7[64][5] = {
     {0x40,0x40,0x40,0x40,0x40}, /* '_' */
 };
 
+static void flush_band(int y_start, int height)
+{
+    (void)esp_lcd_panel_draw_bitmap(s_panel, 0, y_start, LCD_W, y_start + height, s_band_buf);
+    if (s_dma_done_sem != NULL) {
+        (void)xSemaphoreTake(s_dma_done_sem, pdMS_TO_TICKS(100));
+    }
+}
+
 static void draw_text_band(int y_start, const char *text, uint16_t fg, uint16_t bg)
 {
     if (s_panel == NULL || s_band_buf == NULL) {
@@ -152,7 +176,7 @@ static void draw_text_band(int y_start, const char *text, uint16_t fg, uint16_t 
         x += 12;
     }
 
-    (void)esp_lcd_panel_draw_bitmap(s_panel, 0, y_start, LCD_W, y_start + BAND_H, s_band_buf);
+    flush_band(y_start, BAND_H);
 }
 
 static const char *transport_name(transport_id_t id)
@@ -176,7 +200,7 @@ static void vbench_ui_task(void *arg)
         for (int i = 0; i < LCD_W * h; ++i) {
             s_band_buf[i] = COL_BG;
         }
-        (void)esp_lcd_panel_draw_bitmap(s_panel, 0, y, LCD_W, y + h, s_band_buf);
+        flush_band(y, h);
     }
 
     for (;;) {
@@ -232,12 +256,19 @@ esp_err_t virtual_bench_ui_init(void)
     };
     ESP_ERROR_CHECK(esp_lcd_new_i80_bus(&bus_cfg, &i80_bus));
 
+    s_dma_done_sem = xSemaphoreCreateBinary();
+    if (s_dma_done_sem == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_i80_config_t io_cfg = {
         .cs_gpio_num = LCD_PIN_CS,
         .pclk_hz = 10 * 1000 * 1000,
         .trans_queue_depth = 4,
+        .on_color_trans_done = vbench_on_trans_done,
         .dc_levels = { .dc_idle_level = 0, .dc_cmd_level = 0, .dc_dummy_level = 0, .dc_data_level = 1 },
+        .flags = { .swap_color_bytes = 1 },
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
     };
@@ -253,7 +284,7 @@ esp_err_t virtual_bench_ui_init(void)
     ESP_ERROR_CHECK(esp_lcd_panel_init(s_panel));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(s_panel, true));
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, true));
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, false, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, true, false));
     ESP_ERROR_CHECK(esp_lcd_panel_set_gap(s_panel, 0, 35));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, true));
 

@@ -48,5 +48,5 @@
 ## Phase 6 — Black-Box Bench on LilyGO TTGO T-Display S3 (`VIRTUAL_BENCH`)
 - [x] Add optional `CONFIG_OBD2_VIRTUAL_BENCH` Kconfig/board profile for LilyGO T-Display S3 (disables physical CAN/K-Line pins shared with the TFT and routes `elm327_emu` / `obd2_stack` to the in-memory `ecu_simulator` + simulated `V_BAT`).
 - [x] Add optional ST7789 TFT status screen (`esp_lcd`, active only under `CONFIG_OBD2_VIRTUAL_BENCH`) displaying active transport (`BLE`/`WiFi`/`USB`), simulated ECU metrics (`RPM`, speed, coolant, `V_BAT`, DTCs), and last `AT`/OBD RX-TX command.
-- [ ] Run black-box wireless validation on T-Display S3 (BLE `FFF0`/`FFE0` and Wi-Fi TCP `192.168.0.10:35000`): `ATZ`..`ATRV`, Mode `01` PIDs, multi-frame `0902` VIN, `03`/`04` DTC injection/clear, and disconnect/reconnect stress tests. *(Host script `scripts/vbench_blackbox_test.py` ready; awaiting flash & live run on T-Display S3.)*
+- [x] Run black-box wireless validation on T-Display S3 (BLE `FFF0`/`FFE0` and Wi-Fi TCP `192.168.0.10:35000`): `ATZ`..`ATRV`, Mode `01` PIDs, multi-frame `0902` VIN, `03`/`04` DTC injection/clear, and disconnect/reconnect stress tests.
 - [ ] Validate compatibility with `python-OBD`, Car Scanner / OBD Fusion, and the custom Android client app (ELM327 + extended mode).
