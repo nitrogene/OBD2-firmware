@@ -199,6 +199,12 @@ esp_err_t ecu_simulator_init(void)
 
 esp_err_t ecu_simulator_start_bus(bool enable_can, bool enable_kline)
 {
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+    (void)enable_can;
+    (void)enable_kline;
+    ESP_LOGW(TAG, "Physical CAN/K-Line bus simulator disabled in CONFIG_OBD2_VIRTUAL_BENCH");
+    return ESP_ERR_NOT_SUPPORTED;
+#else
     if (s_bus_running) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -220,6 +226,7 @@ esp_err_t ecu_simulator_start_bus(bool enable_can, bool enable_kline)
         }
     }
     return ESP_OK;
+#endif
 }
 
 void ecu_simulator_stop_bus(void)

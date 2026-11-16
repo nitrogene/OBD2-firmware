@@ -398,6 +398,15 @@ static int cmd_sim(int argc, char **argv)
             return 1;
         }
         printf("ECU Sim: injected DTC %s (count=%u)\n", argv[2], (unsigned)sim->dtc_count);
+    } else if (strcmp(argv[1], "vbat") == 0) {
+        long val = strtol(argv[2], NULL, 10);
+        if (val < 0 || val > 24000) {
+            printf("Error: vbat must be 0..24000 mV\n");
+            return 1;
+        }
+        bsp_vbat_set_sim_mv((uint32_t)val);
+        sim->vbat_mv = (uint32_t)val;
+        printf("ECU Sim: simulated V_BAT=%ld mV\n", val);
     } else {
         printf("Unknown subcommand '%s'\n", argv[1]);
         return 1;

@@ -6,6 +6,7 @@
 #include "elm327_emu.h"
 #include "power_mgmt.h"
 #include "transport_stream.h"
+#include "virtual_bench_ui.h"
 
 #include "esp_log.h"
 #include "esp_system.h"
@@ -82,6 +83,9 @@ static void elm327_host_task(void *arg)
         size_t n = transport_stream_read(rx_buf, sizeof(rx_buf), 100U);
         if (n > 0U) {
             elm327_feed_bytes(&s_elm_ctx, rx_buf, n);
+            if (s_elm_ctx.last_cmd[0] != '\0') {
+                virtual_bench_ui_set_last_cmd(s_elm_ctx.last_cmd);
+            }
         }
     }
 }
@@ -102,6 +106,7 @@ void app_main(void)
     ESP_ERROR_CHECK(power_mgmt_init());
     ESP_ERROR_CHECK(transport_stream_init(5000U));
     ESP_ERROR_CHECK(ecu_simulator_init());
+    ESP_ERROR_CHECK(virtual_bench_ui_init());
 
     elm327_callbacks_t elm_cb = {
         .write_bytes = elm_write_bytes_cb,

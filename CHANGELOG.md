@@ -5,6 +5,13 @@ All notable changes to `OBD2-firmware` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-16
+
+### Added
+- **LilyGO TTGO T-Display S3 Virtual Bench (`CONFIG_OBD2_VIRTUAL_BENCH`)**: Kconfig option (`main/Kconfig.projbuild`) and build profile (`sdkconfig.virtual_bench`) that disable conflicting physical CAN/K-Line/ADC/LED GPIOs, simulate `V_BAT` (`bsp_vbat_set_sim_mv` + CLI `sim vbat <mv>`), and route `elm327_emu` to the in-memory `ecu_simulator`.
+- **ST7789 TFT Status Display (`components/virtual_bench_ui`)**: `esp_lcd` 8-bit i8080 (`320x170`) live dashboard displaying active transport (`BLE`/`WIFI`/`USB`/`IDLE`), simulated `RPM`, speed, coolant temperature, `V_BAT`, DTC count, and last `AT`/OBD command.
+- **Black-Box Wireless Test Script (`scripts/vbench_blackbox_test.py`)**: automated TCP/BLE validation harness for `VIRTUAL_BENCH`.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

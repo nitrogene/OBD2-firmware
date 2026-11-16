@@ -61,6 +61,11 @@ void bsp_led_set_duty(uint8_t duty_percent);
  */
 esp_err_t bsp_vbat_read_mv(uint32_t *out_adc_mv, uint32_t *out_vbat_mv);
 
+/**
+ * @brief Override simulated V_BAT voltage in mV (used when CONFIG_OBD2_VIRTUAL_BENCH is enabled).
+ */
+void bsp_vbat_set_sim_mv(uint32_t vbat_mv);
+
 #ifdef __cplusplus
 }
 #endif

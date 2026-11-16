@@ -1,0 +1,13 @@
+menu "OBD2 Firmware Configuration"
+
+    config OBD2_VIRTUAL_BENCH
+        bool "Enable LilyGO TTGO T-Display S3 Virtual Bench mode"
+        default n
+        help
+            Configures the firmware for black-box bench testing on a LilyGO
+            TTGO T-Display S3 board (ESP32-S3 + 170x320 ST7789 TFT).
+            Disables physical CAN/K-Line/ADC/LED GPIO initialization that
+            conflicts with the TFT parallel bus, simulates V_BAT (default
+            12.6 V), and enables the live ST7789 status display.
+
+endmenu

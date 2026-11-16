@@ -1,5 +1,6 @@
 # ESP-IDF Build & Config Artifacts
 build/
+build_vbench/
 sdkconfig
 sdkconfig.old
 managed_components/

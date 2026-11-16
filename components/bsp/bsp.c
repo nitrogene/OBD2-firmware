@@ -13,6 +13,12 @@ static const char *TAG = "bsp";
 static adc_oneshot_unit_handle_t s_adc_handle = NULL;
 static adc_cali_handle_t s_cali_handle = NULL;
 static bool s_cali_enabled = false;
+static uint32_t s_sim_vbat_mv = 12600U;
+
+void bsp_vbat_set_sim_mv(uint32_t vbat_mv)
+{
+    s_sim_vbat_mv = vbat_mv;
+}
 
 static esp_err_t bsp_adc_init(void)
 {
@@ -52,6 +58,11 @@ static esp_err_t bsp_adc_init(void)
 
 esp_err_t bsp_init(void)
 {
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+    ESP_LOGI(TAG, "BSP ready in VIRTUAL_BENCH mode (physical CAN/K-Line/ADC/LED disabled; sim VBAT=%lu mV)",
+             (unsigned long)s_sim_vbat_mv);
+    return ESP_OK;
+#else
     ESP_RETURN_ON_ERROR(bsp_led_init(), TAG, "bsp_led_init failed");
     ESP_RETURN_ON_ERROR(bsp_adc_init(), TAG, "bsp_adc_init failed");
 
@@ -64,10 +75,20 @@ esp_err_t bsp_init(void)
              (int)BSP_PIN_TWAI_TX,
              (int)BSP_PIN_TWAI_RX);
     return ESP_OK;
+#endif
 }
 
 esp_err_t bsp_vbat_read_mv(uint32_t *out_adc_mv, uint32_t *out_vbat_mv)
 {
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+    if (out_adc_mv != NULL) {
+        *out_adc_mv = (uint32_t)((float)s_sim_vbat_mv / BSP_VBAT_INV_RATIO + 0.5f);
+    }
+    if (out_vbat_mv != NULL) {
+        *out_vbat_mv = s_sim_vbat_mv;
+    }
+    return ESP_OK;
+#else
     if (s_adc_handle == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -102,4 +123,5 @@ esp_err_t bsp_vbat_read_mv(uint32_t *out_adc_mv, uint32_t *out_vbat_mv)
     }
 
     return ESP_OK;
+#endif
 }
