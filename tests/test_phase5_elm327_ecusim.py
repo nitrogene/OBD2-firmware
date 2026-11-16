@@ -350,3 +350,30 @@ def test_slcan_formatter_and_tcp_loopback_e2e(phase5_lib: ctypes.CDLL) -> None:
 
     srv.close()
     t.join(timeout=1.0)
+
+
+def test_car_scanner_and_python_obd_init_sequence(phase5_lib: ctypes.CDLL) -> None:
+    """Replay the exact init + polling sequence used by python-OBD and Car Scanner."""
+    h = ElmHarness(phase5_lib)
+    phase5_lib.ecu_sim_set_rpm(ctypes.byref(h.sim), 1800)
+    phase5_lib.ecu_sim_set_speed(ctypes.byref(h.sim), 55)
+    phase5_lib.ecu_sim_set_coolant(ctypes.byref(h.sim), 85)
+
+    assert "ELM327 v1.5" in h.cmd("ATZ\r")
+    assert h.cmd("ATE0\r") == "ATE0\rOK\r\r>"
+    assert h.cmd("ATL0\r") == "OK\r\r>"
+    assert h.cmd("ATS0\r") == "OK\r\r>"
+    assert h.cmd("ATH1\r") == "OK\r\r>"
+    assert h.cmd("ATSP0\r") == "OK\r\r>"
+
+    # Supported PIDs 01..20 (advertises 04, 05, 0C, 0D, 0F, 11)
+    assert h.cmd("0100\r") == "7E8 4100181A8001\r\r>"
+    # Poll every advertised PID with headers on, spaces off
+    assert h.cmd("0104\r").startswith("7E8 4104")
+    assert h.cmd("0105\r") == "7E8 41057D\r\r>"
+    assert h.cmd("010C\r") == "7E8 410C1C20\r\r>"
+    assert h.cmd("010D\r") == "7E8 410D37\r\r>"
+    assert h.cmd("010F\r") == "7E8 410F7D\r\r>"
+    assert h.cmd("0111\r").startswith("7E8 4111")
+    assert h.cmd("ATRV\r") == "12.6V\r\r>"
+    assert h.cmd("03\r") == "7E8 4300\r\r>"
