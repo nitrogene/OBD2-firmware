@@ -1,9 +1,9 @@
-# (Work In Progress) ESP32-S3 OBD-II Scanner & ECU Simulator Firmware
+# ESP32-S3 OBD-II Scanner & ECU Simulator Firmware
 
-> [!WARNING]
-> **Work In Progress (WIP):** This repository is currently in its initialization phase. Firmware components are under active development based on the finalized hardware specifications.
+> [!NOTE]
+> **Status (`v0.3.0+`):** Core firmware stacks (`bsp`, `power_mgmt`, `twai_driver`, `isotp`, `kline_driver`, `obd2_stack`, `kwp2000`, `transport_stream`, `elm327_emu`, `ecu_simulator`, `comm_ble`, `comm_wifi`, `virtual_bench_ui`) are implemented, compiled on ESP-IDF `v5.5.6`, tested via 24 host `pytest` cases, and validated in wireless black-box mode on a LilyGO TTGO T-Display S3 (`VIRTUAL_BENCH`).
 
-Embedded firmware repository (ESP-IDF / FreeRTOS) for the universal **ESP32-S3 OBD-II Diagnostic Scanner & Automotive ECU Simulator** hardware platform.
+Embedded firmware repository (ESP-IDF `v5.5.6` / FreeRTOS) for the universal **ESP32-S3 OBD-II Diagnostic Scanner & Automotive ECU Simulator** hardware platform, including a **Virtual Bench** profile for black-box BLE/Wi-Fi testing on a LilyGO TTGO T-Display S3.
 
 ---
 
@@ -118,9 +118,17 @@ Attenuation ratio of `R12` (`100 kΩ`) and `R13` (`12 kΩ`):
 
 ---
 
-## 6. User Interfaces, Connectivity & ECU Simulator
+## 6. Implemented Firmware Features, Connectivity & Operating Modes
 
-### 6.1 Status LED `LED1` State Machine (`IO2`)
+### 6.1 Firmware Build Profiles
+Two build configurations share the same codebase:
+
+| Profile | Target Hardware | Command | Key Behavior |
+| :--- | :--- | :--- | :--- |
+| **Standard Hardware** | Custom `ESP32-S3-WROOM-1` OBD2 PCB | `idf.py set-target esp32s3 && idf.py build` | Full physical CAN (`IO15`/`IO16`), K-Line (`IO4`/`IO5`), `VBAT_SENSE` (`IO1`), `LED1` (`IO2`), and 10-min Deep Sleep governance. |
+| **Virtual Bench (`CONFIG_OBD2_VIRTUAL_BENCH`)** | **LilyGO TTGO T-Display S3** (`170×320` ST7789) | `idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.virtual_bench" -B build_vbench build` | Disables conflicting physical CAN/K-Line/ADC/LED GPIOs & auto-sleep, drives the ST7789 TFT status UI + `GPIO 0`/`GPIO 14` buttons, simulates `V_BAT` (`12.6V` default), and enables dual-OTA (`partitions_ota.csv`, 2 MB `ota_0`/`ota_1`). |
+
+### 6.2 Status LED `LED1` State Machine (`IO2`)
 | Pattern | Timing | System State |
 | :--- | :--- | :--- |
 | **Off** | 0% | Unpowered or Deep Sleep |
@@ -128,18 +136,45 @@ Attenuation ratio of `R12` (`100 kΩ`) and `R13` (`12 kΩ`):
 | **Slow Blink** | 1 Hz (500 ms ON / 500 ms OFF) | Protocol scanning / baud negotiation |
 | **Solid On** | 100% | Vehicle bus connected and active |
 | **Rapid Bursts** | 10 Hz (50 ms bursts) | Active frame transmission (PID streaming) |
-| **SOS Morse** | 3 short, 3 long, 3 short | Critical fault (overvoltage `> 16V` or CAN `Bus-Off`) |
+| **SOS Morse** | 3 short, 3 long, 3 short | Critical fault (overvoltage `> 15.5 V` or CAN `Bus-Off`) |
 
-### 6.2 Wireless & USB Interfaces
-- **BLE 5.0 GATT:** `CHAR_VEHICLE_DATA` (Notify), `CHAR_COMMAND_IN` (Write Without Response), `CHAR_BATTERY_VOLTAGE` (Read / Notify).
-- **Wi-Fi (802.11 b/g/n):** SoftAP (`OBD2-Scanner-XXXX`, `192.168.4.1`) or Station mode + WebSocket server with embedded HTML5 dashboard.
-- **USB-C (`J2` / `IO19`, `IO20`):** Native USB CDC serial console and JTAG debug.
+### 6.3 Wireless Interfaces & Unified `transport_stream` Arbitration
+Incoming byte streams from BLE and Wi-Fi pass through `components/transport_stream/` (static FreeRTOS `esp_ringbuf` buffers, zero dynamic allocation on hot paths, single-active-transport lock with automatic release on disconnect or `5000 ms` inactivity timeout):
 
-### 6.3 ECU Simulator Mode (`MODE_ECU_SIMULATOR`)
-When compiled/configured as ECU Simulator:
-- Broadcast periodic CAN frames (10 ms / 50 ms) and respond to `0x7DF`/`0x7E0` on `0x7E8` for OBD-II Modes `01`, `02`, `03`, `04`.
-- Respond to K-Line 5-baud and Fast-Init wake-up sequences.
-- Provide USB-C CDC / BLE CLI commands: `set rpm <val>`, `set speed <val>`, `set coolant <temp>`, `fault inject <dtc>`, `fault clear`.
+- **BLE 5.0 GATT (`components/comm_ble`, NimBLE):**
+  - Advertised name: `OBD2-ELM327` (NVS-configurable via Web UI or `comm_ble_set_name`).
+  - Primary UART Service `0xFFF0`: `0xFFF1` (Notify TX) + `0xFFF2` (Write / Write-No-Rsp RX).
+  - Alias UART Service `0xFFE0`: `0xFFE1` (Notify + Write / Write-No-Rsp) for broad Android/iOS ELM327 app compatibility.
+  - Supports secure bonding and ATT MTU negotiation.
+  - Measured black-box throughput on T-Display S3: **~8.1 req/s** (`200` PIDs in `24.66 s`).
+- **Wi-Fi SoftAP / AP+STA, TCP Server & Web/OTA (`components/comm_wifi`):**
+  - Default SoftAP SSID `OBD2-Scanner` (password `12345678`, static IP **`192.168.0.10/24`**), optional `AP+STA` mode persisted in NVS.
+  - ELM327 TCP Server on **port `35000`** (`TCP_NODELAY` enabled).
+  - Measured black-box throughput on T-Display S3: **~136.9 req/s** (`200` PIDs in `1.46 s`).
+  - Embedded HTTP Server on **port `80`** (`http://192.168.0.10/`):
+    - `GET /` & `POST /config`: configure SoftAP/STA SSID & password and BLE device name in NVS.
+    - `POST /ota`: wireless `.bin` firmware upload (`esp_ota_ops`, verified with `1.18 MB` `VIRTUAL_BENCH` image on `partitions_ota.csv`).
+    - `POST /factory-reset`: erases NVS and reboots.
+
+### 6.4 ELM327 v1.5 Emulator & Extended UDS/SLCAN Mode (`components/elm327_emu`)
+- **Standard ELM327 v1.5 AT Commands:** `ATZ`, `ATI`, `AT@1`, `ATWS`, `ATD`, `ATPC`, `ATE0`/`1`, `ATL0`/`1`, `ATS0`/`1`, `ATH0`/`1`, `ATRV` (via `power_mgmt`), `ATSP0..9`, `ATDP`, `ATDPN`, `ATAT0..2`, `ATST`, `ATSH`, `ATCRA`, `ATCF`, `ATCM`, `ATCAF0`/`1`, `ATFCSH`, `ATFCSD`, `ATFCSM`, `ATMA`, `ATSI`, `ATFI`, bare `\r` command repeat, and ISO-TP `0:`/`1:` multi-line formatting.
+- **Extended Custom Mode (`AT+EXT=1` / `AT+EXT=0`):**
+  - Unlocks UDS services in `ecu_simulator` / `obd2_stack`: `0x10` (DiagnosticSessionControl), `0x22` (ReadDataByIdentifier: `0xF190` VIN, `0xF187` Part Number, `0x010C` RPM, `0x010D` Speed), `0x2E` (WriteDataByIdentifier `0xF190` VIN), `0x19` (ReadDTCInformation `0x01`/`0x02`), and `0x14` (ClearDiagnosticInformation).
+  - Extended AT commands: `AT+SNIFF=1/0`, `AT+STATS` (`RX`/`TX`/`ERR` counters), `AT+FACTORY` (NVS erase & reboot), plus `elm327_format_slcan_frame()` (`t<III><L><DATA>\r` / `T<IIIIIIII><L><DATA>\r`).
+
+### 6.5 ECU Simulator & USB-C CLI (`components/ecu_simulator`, `main/cli_commands.c`)
+- **In-Memory OBD/UDS Engine (`ecu_sim_core.c`):** Responds to Modes `01` (PIDs `00`, `04`, `05`, `0C`, `0D`, `0F`, `11`, `42`), `02`, `03`, `04`, `09` (`02` VIN), and UDS `0x10`/`0x22`/`0x2E`/`0x19`/`0x14` with DTC injection/clearing.
+- **Physical Bus Responder (`MODE_ECU_SIMULATOR`):** `ecu_simulator_start_bus(can, kline)` broadcasts cyclic CAN frames (`0x280`, `0x316`) + `0x7E8` ISO-TP responses on TWAI, and answers KWP2000/ISO-9141 frames on K-Line (disabled in `CONFIG_OBD2_VIRTUAL_BENCH`).
+- **USB-C CDC Console (`obd2>` prompt, 115200):**
+  - Hardware/Diagnostics: `info`, `led <off|breath|blink|solid|burst|sos|duty <0-100>>`, `vbat`, `power [sleep|selftest]`, `can <ping|pong|rx>`, `kline <echo|pulse>`, `proto` (`ATSP0` auto-detect).
+  - Simulator Control: `sim status`, `sim rpm <0-16383>`, `sim speed <0-255>`, `sim coolant <-40..215>`, `sim dtc <P0100>`, `sim clear`, `sim vbat <0-24000>`, `sim start [can|kline|both]`, `sim stop`.
+
+### 6.6 LilyGO TTGO T-Display S3 Virtual Bench UI (`components/virtual_bench_ui`)
+Active only when `CONFIG_OBD2_VIRTUAL_BENCH=y`:
+- Drives the `170×320` ST7789 8-bit i8080 TFT (`GPIO 38/15/9/6/7/8/5`, `D0..D7` on `GPIO 39..42, 45..48`) in `320×170` landscape, showing live transport (`BLE`/`WIFI`/`USB`/`IDLE`), `RPM`, `SPD`, `CLT`, `VBAT`, `DTC` count, and last `AT`/OBD command.
+- **Physical Buttons:**
+  - **`GPIO 0`**: cycles engine scenarios (`IDLE` `850 RPM / 12.6V` → `CRUISE` `2400 RPM / 90 km/h / 14.1V` → `ACCEL` `4200 RPM / 130 km/h / 14.2V` → `OVERHEAT` `112 °C`).
+  - **`GPIO 14`**: cycles fault/voltage states (`CLEAN` → `DTC P0301` → `LOW 11.2V`).
 
 ---
 
@@ -153,51 +188,75 @@ When compiled/configured as ECU Simulator:
 
 ---
 
-## 8. Recommended Software Stack & Architecture
+## 8. Software Stack, Repository Layout, Builds & Testing
 
-- **Framework:** **ESP-IDF v5.2+** (C/C++, FreeRTOS, `idf.py` with CMake / Ninja).
-- **Recommended FreeRTOS Tasks:**
-  - `twai_rx_tx` (Prio 10): Reactive CAN/TWAI packet handling
-  - `kline_engine` (Prio 10): Strict UART & 5-baud timings
-  - `comm_host` (Prio 5): BLE GATT / Wi-Fi WebSocket / USB CDC
-  - `ecu_sim` (Prio 4): ECU simulator engine (when enabled)
-  - `power_telemetry` (Prio 3): `VBAT_SENSE` ADC sampling & sleep governance
-  - `ui_led` (Prio 2): `LED1` PWM state machine
-- **Recommended Repository Layout:**
+- **Framework:** **ESP-IDF `v5.5.6`** (C/C++, FreeRTOS, `idf.py` with CMake / Ninja).
+- **Repository Layout:**
   ```text
   OBD2-firmware/
   ├── CMakeLists.txt
-  ├── sdkconfig.defaults        # TWAI, USB CDC (IO19/IO20), BLE 5.0, 240 MHz, 16MB Flash, 2MB PSRAM
+  ├── sdkconfig.defaults        # ESP32-S3, 240 MHz, 16 MB Flash, 2 MB PSRAM, USB CDC, NimBLE
+  ├── sdkconfig.virtual_bench   # LilyGO TTGO T-Display S3 profile (VIRTUAL_BENCH + dual-OTA)
+  ├── partitions_ota.csv        # Dual-OTA partition table (ota_0 + ota_1 = 2 MB each)
+  ├── CHANGELOG.md              # Release history (v0.1.0 .. v0.3.0+)
   ├── bringup.md                # Hardware bring-up & dual-board bench validation guide
   ├── components/
-  │   ├── bsp/                  # Board Support Package (GPIO pinout, LED1, ADC1)
-  │   ├── twai_driver/          # Low-level TWAI driver & filters
-  │   ├── isotp/                # ISO 15765-2 transport layer
-  │   ├── kline_driver/         # UART K-Line, echo filtering & 5-baud/Fast-Init
-  │   ├── obd2_stack/           # SAE J1979 Modes 01-09
+  │   ├── bsp/                  # Board Support Package (GPIO pinout, LED1 PWM, VBAT ADC1)
+  │   ├── twai_driver/          # Low-level TWAI driver, 500k/250k probe & Bus-Off recovery
+  │   ├── isotp/                # Pure-C ISO 15765-2 transport layer (11-bit & 29-bit)
+  │   ├── kline_driver/         # UART1 K-Line, echo verification, 5-baud & Fast-Init
+  │   ├── obd2_stack/           # ATSP0 auto-detect, OBD-II PID/DTC codecs, security gating
   │   ├── kwp2000/              # GM-Daewoo KWP2000 OEM services
-  │   ├── power_mgmt/           # VBAT_SENSE calibration & Deep Sleep
-  │   ├── comm_ble/             # BLE 5.0 GATT server
-  │   ├── comm_wifi/            # SoftAP / WebSocket dashboard
-  │   └── ecu_simulator/        # ECU emulation & CLI
+  │   ├── power_mgmt/           # VBAT moving avg, power state machine, TWDT & Deep Sleep
+  │   ├── transport_stream/     # Static ring-buffered RX/TX stream & single-transport lock
+  │   ├── elm327_emu/           # Pure-C ELM327 v1.5 parser, multi-line ISO-TP & SLCAN
+  │   ├── ecu_simulator/        # Pure-C OBD/UDS responder + physical CAN/K-Line bus tasks
+  │   ├── comm_ble/             # NimBLE GATT server (FFF0/FFF1/FFF2 + FFE0/FFE1)
+  │   ├── comm_wifi/            # SoftAP/STA, ELM327 TCP :35000, HTTP Config & OTA :80
+  │   └── virtual_bench_ui/     # ST7789 TFT status UI & GPIO0/GPIO14 buttons (VIRTUAL_BENCH)
   ├── main/
-  │   ├── CMakeLists.txt
-  │   ├── app_main.c            # Boot, role selection & task setup
-  │   └── cli_commands.c        # USB-C CDC CLI console
-  └── review/
-      └── guidelines.md         # AI/Human technical review protocol
+  │   ├── Kconfig.projbuild     # CONFIG_OBD2_VIRTUAL_BENCH option
+  │   ├── app_main.c            # NVS, BSP, power_mgmt, transports, ELM327 host task
+  │   └── cli_commands.c        # USB-C CDC CLI console (`obd2>`)
+  ├── tests/                    # Host C+Python unit tests (24 pytest cases via gcc/ziglang)
+  │   ├── test_isotp.py
+  │   ├── test_phase4_protocols.py
+  │   └── test_phase5_elm327_ecusim.py
+  ├── scripts/                  # Black-box LilyGO bench & logic analyzer scripts
+  │   ├── vbench_blackbox_test.py    # Wi-Fi TCP 192.168.0.10:35000 suite + 200-PID benchmark
+  │   ├── vbench_ble_test.py         # BLE GATT FFF0/FFE0 suite + 200-PID benchmark (bleak)
+  │   ├── vbench_arbitration_test.py # Simultaneous BLE + Wi-Fi transport lock test
+  │   └── vbench_http_test.py        # Web Config GET / + wireless POST /ota uploader
+  └── .github/workflows/
+      ├── ci.yml                # ESP-IDF esp32s3 build, pytest (24 tests), ruff & clang-format
+      └── release.yml           # Automated binary release on v* tags
   ```
 
-### Prerequisites & Local Build Setup
-- **ESP-IDF `v5.2+` (recommended `v5.5.6`, aligned with [`.github/workflows/ci.yml`](.github/workflows/ci.yml)):**
-  - **Windows:** [ESP-IDF Windows Installer](https://dl.espressif.com/dl/esp-idf/) (includes ESP-IDF, `xtensa-esp-elf` toolchain for `esp32s3`, CMake/Ninja, OpenOCD, and USB JTAG/CDC drivers) or the [VS Code ESP-IDF Extension](https://marketplace.visualstudio.com/items?itemName=espressif.esp-idf-extension).
+### Prerequisites & Build Commands
+- **ESP-IDF `v5.2+` (recommended `v5.5.6`):**
+  - **Windows:** [ESP-IDF Windows Installer](https://dl.espressif.com/dl/esp-idf/) or the [VS Code ESP-IDF Extension](https://marketplace.visualstudio.com/items?itemName=espressif.esp-idf-extension).
   - **Linux / macOS:** [ESP-IDF Standard Setup (`v5.5.6` / `esp32s3`)](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32s3/get-started/linux-macos-setup.html).
 - **Python Host Tooling (`uv`, Python `>= 3.11`):**
-  - Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for host scripts and `pytest` (`uv sync`, then `uv run pytest`).
-- **Quick Commands (once Phase 1 structure is initialized):**
-  - Firmware build (in ESP-IDF PowerShell / sourced environment): `idf.py set-target esp32s3 && idf.py build`
-  - Host unit tests: `uv run pytest`
-  - Hardware bring-up checklist (multimeter, 8-ch logic analyzer, dual-board bench): see [`bringup.md`](bringup.md)
+  - Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/), then run `uv sync`.
+- **Build & Flash Commands:**
+  - Standard hardware build: `idf.py set-target esp32s3 && idf.py build`
+  - LilyGO `VIRTUAL_BENCH` build & flash:
+    ```powershell
+    idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.virtual_bench" -B build_vbench -p COM8 flash
+    ```
+
+### Test Suites & Validation Scripts
+- **Host Unit Tests (pure-C compiled via `gcc`/`ziglang` + `ctypes`, 24 tests):**
+  ```powershell
+  uv run pytest -v
+  uvx ruff check tests/ scripts/
+  ```
+- **LilyGO Black-Box Wireless Validation (`VIRTUAL_BENCH`):**
+  - BLE (`OBD2-ELM327`, no Wi-Fi switch needed): `uvx --with bleak python scripts/vbench_ble_test.py`
+  - Wi-Fi (`OBD2-Scanner` / `192.168.0.10:35000`): `uv run python scripts/vbench_blackbox_test.py`
+  - Multi-transport lock arbitration: `uvx --with bleak python scripts/vbench_arbitration_test.py`
+  - Web Config & wireless OTA: `uv run python scripts/vbench_http_test.py --ota build_vbench/obd2_firmware.bin`
+- **Hardware Bring-Up Checklist:** see [`bringup.md`](bringup.md).
 
 ---
 
