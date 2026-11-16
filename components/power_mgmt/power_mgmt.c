@@ -139,11 +139,13 @@ static void power_telemetry_task(void *arg)
                 first_sample = false;
             }
 
+#ifndef CONFIG_OBD2_VIRTUAL_BENCH
             if (sleep_armed && inactivity_ms >= POWER_INACTIVITY_TIMEOUT_MS) {
                 ESP_LOGW(TAG, "10-minute inactivity timeout in %s; entering Deep Sleep",
                          power_mgmt_state_to_str(new_state));
                 power_mgmt_enter_deep_sleep();
             }
+#endif
         }
 
         vTaskDelay(pdMS_TO_TICKS(POWER_SAMPLE_PERIOD_MS));

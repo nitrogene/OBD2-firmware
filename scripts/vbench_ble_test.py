@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import sys
+import time
 
 from bleak import BleakClient, BleakScanner
 
@@ -11,7 +12,7 @@ UUID_FFF2 = "0000fff2-0000-1000-8000-00805f9b34fb"
 UUID_FFE1 = "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 
-async def run_ble_suite(device_name: str, timeout: float) -> None:
+async def run_ble_suite(device_name: str, timeout: float, bench_count: int) -> None:
     print(f"[1/4] Scanning for BLE device '{device_name}' ({timeout:.0f}s)...")
     dev = await BleakScanner.find_device_by_name(device_name, timeout=timeout)
     if dev is None:
@@ -55,6 +56,16 @@ async def run_ble_suite(device_name: str, timeout: float) -> None:
         assert "EXT OK" in await send_elm(client, "AT+EXT=1")
         assert "62 01 0C" in await send_elm(client, "22010C")
         assert "OK" in await send_elm(client, "AT+EXT=0")
+
+        if bench_count > 0:
+            t0 = time.perf_counter()
+            for i in range(bench_count):
+                pid = "010C" if (i % 2 == 0) else "010D"
+                resp = await send_elm(client, pid)
+                assert resp.startswith("41 "), f"Bench req {i} failed: {resp!r}"
+            dt = time.perf_counter() - t0
+            print(f"  BLE Benchmark: {bench_count} PIDs in {dt:.2f}s ({bench_count / dt:.1f} req/s)")
+
         await client.stop_notify(UUID_FFF1)
         print("  OBD + UDS over BLE OK")
 
@@ -71,8 +82,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="OBD2 VIRTUAL_BENCH BLE black-box validator")
     parser.add_argument("--name", default="OBD2-ELM327", help="BLE device name")
     parser.add_argument("--timeout", type=float, default=10.0, help="Scan timeout (s)")
+    parser.add_argument("--bench", type=int, default=200, help="Benchmark PID count (0=skip)")
     args = parser.parse_args()
-    asyncio.run(run_ble_suite(args.name, args.timeout))
+    asyncio.run(run_ble_suite(args.name, args.timeout, args.bench))
     return 0
 
 

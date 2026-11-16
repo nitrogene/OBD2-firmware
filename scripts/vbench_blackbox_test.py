@@ -20,7 +20,7 @@ def send_elm(sock: socket.socket, cmd: str, timeout: float = 2.0) -> str:
     return buf.decode("ascii", errors="replace")
 
 
-def run_suite(host: str, port: int, stress_cycles: int) -> None:
+def run_suite(host: str, port: int, stress_cycles: int, bench_count: int) -> None:
     print(f"[1/4] Connecting to {host}:{port}...")
     with socket.create_connection((host, port), timeout=5.0) as s:
         assert "ELM327 v1.5" in send_elm(s, "ATZ"), "ATZ failed"
@@ -47,6 +47,15 @@ def run_suite(host: str, port: int, stress_cycles: int) -> None:
         assert "OK" in send_elm(s, "AT+EXT=0"), "AT+EXT=0 failed"
         print("  Extended mode UDS OK")
 
+        if bench_count > 0:
+            t0 = time.perf_counter()
+            for i in range(bench_count):
+                pid = "010C" if (i % 2 == 0) else "010D"
+                resp = send_elm(s, pid)
+                assert resp.startswith("41 "), f"Bench req {i} failed: {resp!r}"
+            dt = time.perf_counter() - t0
+            print(f"  Wi-Fi Benchmark: {bench_count} PIDs in {dt:.2f}s ({bench_count / dt:.1f} req/s)")
+
     print(f"[4/4] Disconnect/reconnect stress ({stress_cycles} cycles)...")
     for i in range(stress_cycles):
         with socket.create_connection((host, port), timeout=5.0) as s:
@@ -61,8 +70,9 @@ def main() -> int:
     parser.add_argument("--host", default="192.168.0.10", help="Target IP (default: 192.168.0.10)")
     parser.add_argument("--port", type=int, default=35000, help="ELM327 TCP port (default: 35000)")
     parser.add_argument("--cycles", type=int, default=5, help="Reconnect stress cycles (default: 5)")
+    parser.add_argument("--bench", type=int, default=200, help="Benchmark PID count (0=skip)")
     args = parser.parse_args()
-    run_suite(args.host, args.port, args.cycles)
+    run_suite(args.host, args.port, args.cycles, args.bench)
     return 0
 
 

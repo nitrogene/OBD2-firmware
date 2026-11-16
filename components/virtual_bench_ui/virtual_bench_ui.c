@@ -5,6 +5,7 @@
 
 #ifdef CONFIG_OBD2_VIRTUAL_BENCH
 
+#include "bsp.h"
 #include "driver/gpio.h"
 #include "ecu_simulator.h"
 #include "esp_heap_caps.h"
@@ -36,6 +37,9 @@ static const char *TAG = "vbench_ui";
 #define LCD_PIN_D5       46
 #define LCD_PIN_D6       47
 #define LCD_PIN_D7       48
+
+#define BTN_PIN_SCENARIO 0
+#define BTN_PIN_FAULT    14
 
 #define LCD_W            320
 #define LCD_H            170
@@ -189,6 +193,59 @@ static const char *transport_name(transport_id_t id)
     }
 }
 
+static void vbench_poll_buttons(void)
+{
+    static int prev_b0 = 1;
+    static int prev_b1 = 1;
+    static uint8_t scenario_idx = 0U;
+    static uint8_t fault_idx = 0U;
+
+    int b0 = gpio_get_level(BTN_PIN_SCENARIO);
+    if (prev_b0 == 1 && b0 == 0) {
+        static const struct {
+            const char *name;
+            uint16_t rpm;
+            uint8_t speed;
+            int16_t coolant;
+            uint32_t vbat_mv;
+        } scenarios[] = {
+            {"IDLE", 850U, 0U, 88, 12600U},
+            {"CRUISE", 2400U, 90U, 90, 14100U},
+            {"ACCEL", 4200U, 130U, 94, 14200U},
+            {"OVERHEAT", 1100U, 20U, 112, 13800U},
+        };
+        scenario_idx = (uint8_t)((scenario_idx + 1U) % 4U);
+        ecu_sim_state_t *sim = ecu_simulator_state();
+        ecu_sim_set_rpm(sim, scenarios[scenario_idx].rpm);
+        ecu_sim_set_speed(sim, scenarios[scenario_idx].speed);
+        ecu_sim_set_coolant(sim, scenarios[scenario_idx].coolant);
+        bsp_vbat_set_sim_mv(scenarios[scenario_idx].vbat_mv);
+        sim->vbat_mv = scenarios[scenario_idx].vbat_mv;
+        snprintf(s_last_cmd, sizeof(s_last_cmd), "BTN0:%s", scenarios[scenario_idx].name);
+    }
+    prev_b0 = b0;
+
+    int b1 = gpio_get_level(BTN_PIN_FAULT);
+    if (prev_b1 == 1 && b1 == 0) {
+        fault_idx = (uint8_t)((fault_idx + 1U) % 3U);
+        ecu_sim_state_t *sim = ecu_simulator_state();
+        if (fault_idx == 0U) {
+            ecu_sim_clear_dtcs(sim);
+            bsp_vbat_set_sim_mv(12600U);
+            sim->vbat_mv = 12600U;
+            snprintf(s_last_cmd, sizeof(s_last_cmd), "BTN1:CLEAN");
+        } else if (fault_idx == 1U) {
+            (void)ecu_sim_inject_dtc(sim, "P0301");
+            snprintf(s_last_cmd, sizeof(s_last_cmd), "BTN1:DTC P0301");
+        } else {
+            bsp_vbat_set_sim_mv(11200U);
+            sim->vbat_mv = 11200U;
+            snprintf(s_last_cmd, sizeof(s_last_cmd), "BTN1:LOW 11.2V");
+        }
+    }
+    prev_b1 = b1;
+}
+
 static void vbench_ui_task(void *arg)
 {
     (void)arg;
@@ -204,6 +261,7 @@ static void vbench_ui_task(void *arg)
     }
 
     for (;;) {
+        vbench_poll_buttons();
         const ecu_sim_state_t *sim = ecu_simulator_state();
         power_status_t pwr = {0};
         (void)power_mgmt_get_status(&pwr);
@@ -232,6 +290,15 @@ static void vbench_ui_task(void *arg)
 
 esp_err_t virtual_bench_ui_init(void)
 {
+    gpio_config_t btn_conf = {
+        .pin_bit_mask = (1ULL << BTN_PIN_SCENARIO) | (1ULL << BTN_PIN_FAULT),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&btn_conf));
+
     /* Power on LCD + keep RD high + turn on backlight */
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << LCD_PIN_POWER_ON) | (1ULL << LCD_PIN_RD) | (1ULL << LCD_PIN_BL),
