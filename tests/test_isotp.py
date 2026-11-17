@@ -312,5 +312,24 @@ def test_timeouts_n_bs_and_n_cr(isotp_lib: ctypes.CDLL) -> None:
 def test_invalid_args_and_busy(isotp_lib: ctypes.CDLL) -> None:
     ep = VirtualEndpoint(isotp_lib, 0x7E0, 0x7E8)
     assert ep.send(b"") == ISOTP_ERR_INVALID_ARG
+    assert ep.send(bytes(ISOTP_MAX_PAYLOAD + 1)) == ISOTP_ERR_INVALID_ARG
     assert ep.send(bytes(20)) == ISOTP_OK
     assert ep.send(b"\x01\x00") == ISOTP_ERR_BUSY
+
+
+def test_malformed_frames_and_edge_cases(isotp_lib: ctypes.CDLL) -> None:
+    rx = VirtualEndpoint(isotp_lib, 0x7E8, 0x7E0)
+
+    # Single Frame with SF_DL == 0 or SF_DL > 7 or truncated DLC
+    assert rx.feed_can(0x7E0, False, b"\x00\x01\x02") == ISOTP_ERR_INVALID_ARG
+    assert rx.feed_can(0x7E0, False, b"\x08\x01\x02\x03\x04\x05\x06\x07") == ISOTP_ERR_INVALID_ARG
+    assert rx.feed_can(0x7E0, False, b"\x05\x01\x02") == ISOTP_ERR_INVALID_ARG
+
+    # First Frame with DLC < 8 or total_len < 8 -> rejected with FC.OVFLW (0x32)
+    assert rx.feed_can(0x7E0, False, b"\x10\x14\x01\x02") == ISOTP_ERR_INVALID_ARG
+    assert rx.feed_can(0x7E0, False, b"\x10\x05\x01\x02\x03\x04\x05\x06") == ISOTP_ERR_OVERFLOW
+    assert rx.tx_frames[-1][2][:3] == b"\x32\x00\x00"
+
+    # Unexpected Consecutive Frame while idle
+    assert rx.feed_can(0x7E0, False, b"\x21\x01\x02\x03") == ISOTP_ERR_INVALID_ARG
+

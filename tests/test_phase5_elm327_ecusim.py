@@ -411,3 +411,77 @@ def test_car_scanner_and_python_obd_init_sequence(phase5_lib: ctypes.CDLL) -> No
     assert h.cmd("0111\r").startswith("7E8 4111")
     assert h.cmd("ATRV\r") == "12.6V\r\r>"
     assert h.cmd("03\r") == "7E8 4300\r\r>"
+
+
+def test_elm327_parser_fuzzing_and_line_overflow(phase5_lib: ctypes.CDLL) -> None:
+    """Verify ELM327 parser survives line buffer overflow, odd hex, and malformed AT commands."""
+    h = ElmHarness(phase5_lib)
+    h.cmd("ATE0\r")
+
+    # 1. Line buffer overflow (> 64 chars without CR) emits BUFFER FULL and does not corrupt state
+    overlong = "A" * 200 + "\r"
+    assert "BUFFER FULL" in h.cmd(overlong)
+    # Subsequent valid command must work cleanly
+    assert h.cmd("ATI\r") == "ELM327 v1.5\r\r>"
+
+    # 2. Odd-length hex and non-hex characters in OBD requests
+    assert h.cmd("010\r") == "?\r\r>"
+    assert h.cmd("01GG\r") == "?\r\r>"
+
+    # 3. Malformed AT headers/filters/timing and out-of-range AT+SIM parameters
+    for bad_cmd in (
+        "ATSH\r",
+        "ATSH123456789\r",
+        "ATCRA\r",
+        "ATCF\r",
+        "ATCM\r",
+        "ATFCSH\r",
+        "ATSTGG\r",
+        "AT+EXT=1\r",
+    ):
+        resp = h.cmd(bad_cmd)
+        assert resp.endswith("\r\r>")
+
+    # In extended mode, test AT+SIM boundary validation
+    for bad_sim in (
+        "AT+SIM:RPM=-1\r",
+        "AT+SIM:RPM=20000\r",
+        "AT+SIM:SPEED=300\r",
+        "AT+SIM:COOLANT=-50\r",
+        "AT+SIM:COOLANT=250\r",
+        "AT+SIM:VBAT=1000\r",
+        "AT+SIM:DTC=BAD\r",
+        "AT+SIM:UNKNOWN=1\r",
+    ):
+        assert h.cmd(bad_sim) == "?\r\r>"
+
+
+def test_ecu_sim_boundary_dtcs_and_modes(phase5_lib: ctypes.CDLL) -> None:
+    """Verify DTC table saturation (max 16), Mode 02 Freeze Frame, and UDS 0x22/0x2E boundaries."""
+    h = ElmHarness(phase5_lib)
+    h.cmd("ATE0\r")
+
+    # 1. Saturate DTC table (ECU_SIM_MAX_DTCS = 16)
+    for i in range(16):
+        dtc_code = f"P01{i:02X}".encode("ascii")
+        assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), dtc_code) == 0
+    assert h.sim.dtc_count == 16
+
+    # 17th DTC and invalid DTC strings must be rejected (-1) without overflowing
+    assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), b"P0200") == -1
+    assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), b"Z9999") == -1
+    assert h.sim.dtc_count == 16
+
+    # Clear and verify Mode 02 Freeze Frame
+    phase5_lib.ecu_sim_clear_dtcs(ctypes.byref(h.sim))
+    assert h.sim.dtc_count == 0
+    phase5_lib.ecu_sim_set_rpm(ctypes.byref(h.sim), 1500)
+    assert h.cmd("020C\r") == "42 0C 17 70\r\r>"
+
+    # 2. UDS 0x22 (0xF190 VIN, 0x010D speed) & 0x2E invalid VIN length -> NRC 0x31
+    assert h.cmd("AT+EXT=1\r") == "EXT OK\r\r>"
+    phase5_lib.ecu_sim_set_speed(ctypes.byref(h.sim), 88)
+    assert h.cmd("22010D\r") == "62 01 0D 58\r\r>"
+    assert "62 F1 90" in h.cmd("22F190\r")
+    assert h.cmd("2EF190313233\r") == "7F 2E 31\r\r>"
+

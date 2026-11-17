@@ -127,16 +127,36 @@ static bool parse_can_id_hex(const char *s, size_t min_len, size_t max_len, uint
     return true;
 }
 
+static bool parse_sim_int(const char *val_str, long min_val, long max_val) {
+    if (val_str == NULL || *val_str == '\0') {
+        return false;
+    }
+    char *endptr = NULL;
+    long v = strtol(val_str, &endptr, 10);
+    if (endptr == val_str || *endptr != '\0') {
+        return false;
+    }
+    return (v >= min_val && v <= max_val);
+}
+
 static bool validate_sim_kv(const char *kv) {
-    if (strncmp(kv, "RPM=", 4) == 0 || strncmp(kv, "SPD=", 4) == 0 || strncmp(kv, "CLT=", 4) == 0 ||
-        strncmp(kv, "VBAT=", 5) == 0) {
-        const char *val_str = strchr(kv, '=') + 1;
-        if (*val_str == '\0') {
-            return false;
-        }
-        char *endptr = NULL;
-        (void)strtol(val_str, &endptr, 10);
-        return (endptr != val_str && *endptr == '\0');
+    if (strncmp(kv, "RPM=", 4) == 0) {
+        return parse_sim_int(kv + 4, 0, 16383);
+    }
+    if (strncmp(kv, "SPD=", 4) == 0) {
+        return parse_sim_int(kv + 4, 0, 255);
+    }
+    if (strncmp(kv, "SPEED=", 6) == 0) {
+        return parse_sim_int(kv + 6, 0, 255);
+    }
+    if (strncmp(kv, "CLT=", 4) == 0) {
+        return parse_sim_int(kv + 4, -40, 215);
+    }
+    if (strncmp(kv, "COOLANT=", 8) == 0) {
+        return parse_sim_int(kv + 8, -40, 215);
+    }
+    if (strncmp(kv, "VBAT=", 5) == 0) {
+        return parse_sim_int(kv + 5, 5000, 24000);
     }
     if (strncmp(kv, "DTC=", 4) == 0) {
         const char *dtc = kv + 4;
