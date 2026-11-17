@@ -37,13 +37,18 @@ uint8_t kline_checksum(const uint8_t *data, size_t len);
  * Uses format byte (0x80 | len) for physical addressing or (0xC0 | len) for functional.
  * Returns total frame length on success, or negative on error.
  */
-int kline_build_kwp_frame(uint8_t fmt_base,
-                          uint8_t target,
-                          uint8_t source,
-                          const uint8_t *payload,
-                          uint8_t payload_len,
-                          uint8_t *out_frame,
-                          size_t max_len);
+int kline_build_kwp_frame(uint8_t fmt_base, uint8_t target, uint8_t source, const uint8_t *payload,
+                          uint8_t payload_len, uint8_t *out_frame, size_t max_len);
+
+/**
+ * @brief Build an ISO 9141-2 3-byte header frame (hdr0 + target + source + payload + checksum).
+ *
+ * Typical tester request uses hdr0=0x68, target=0x6A, source=0xF1.
+ * Typical ECU response uses hdr0=0x48, target=0x6B, source=0x10.
+ * Returns total frame length on success, or negative on error.
+ */
+int kline_build_iso9141_frame(uint8_t hdr0, uint8_t target, uint8_t source, const uint8_t *payload,
+                              uint8_t payload_len, uint8_t *out_frame, size_t max_len);
 
 /**
  * @brief Parse and validate checksum of a raw KWP2000/ISO 9141-2 frame.

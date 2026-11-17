@@ -288,7 +288,16 @@ def test_extended_mode_and_security_gating(phase5_lib: ctypes.CDLL) -> None:
     assert h.cmd("14FFFFFF\r") == "54\r\r>"
     assert h.cmd("1901FF\r") == "59 01 FF 01 00 00\r\r>"
 
-    # Extended AT commands: AT+SNIFF, AT+STATS, AT+FACTORY
+    # KWP2000 services (0x81 StartCommunication, 0x3E TesterPresent, 0x21 ReadDataByLocalIdentifier, 0x18 ReadDTCByStatus, 0x82 StopCommunication)
+    assert h.cmd("81\r") == "C1 EF 8F\r\r>"
+    assert h.cmd("3E\r") == "7E\r\r>"
+    assert h.cmd("2101\r").startswith("61 01 ")
+    assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), b"P0100") == 0
+    assert h.cmd("1802FF00\r") == "58 01 01 00 60\r\r>"
+    assert h.cmd("14FF00\r") == "54\r\r>"
+    assert h.cmd("82\r") == "C2\r\r>"
+
+    # Extended AT commands: AT+SNIFF, AT+STATS, AT+FACTORY, AT+SIM, and hex validation
     assert h.cmd("AT+SNIFF=1\r") == "OK\r\r>"
     assert h.ctx.sniff_enabled is True
     stats = h.cmd("AT+STATS\r")
@@ -296,8 +305,33 @@ def test_extended_mode_and_security_gating(phase5_lib: ctypes.CDLL) -> None:
     assert h.cmd("AT+FACTORY\r") == "FACTORY RESET\r\r>"
     assert h.factory_called is True
 
+    assert h.cmd("AT+SIM:RPM=2500\r") == "OK\r\r>"
+    assert h.cmd("AT+SIM:DTC=P0100\r") == "OK\r\r>"
+    assert h.cmd("AT+SIM:DTC=CLEAR\r") == "OK\r\r>"
+    assert h.cmd("AT+SIM:RPM=XYZ\r") == "?\r\r>"
+
+    # Strict hex validation on ATSH / ATCRA / ATCF / ATCM / ATFCSH
+    assert h.cmd("ATSH7E0\r") == "OK\r\r>"
+    assert h.ctx.tx_header == 0x7E0
+    assert h.cmd("ATSHXYZ\r") == "?\r\r>"
+    assert h.ctx.tx_header == 0x7E0
+    assert h.cmd("ATCRA7E8\r") == "OK\r\r>"
+    assert h.ctx.rx_filter_id == 0x7E8 and h.ctx.rx_filter_mask == 0x7FF
+    assert h.cmd("ATCAR\r") == "OK\r\r>"
+    assert h.ctx.rx_filter_id == 0 and h.ctx.rx_filter_mask == 0
+
     assert h.cmd("AT+EXT=0\r") == "OK\r\r>"
     assert h.ctx.sniff_enabled is False
+
+    # Passkey enforcement when configured
+    phase5_lib.elm327_set_ext_passkey(b"SECRET123")
+    try:
+        assert h.cmd("AT+EXT=1\r") == "AUTH ERR\r\r>"
+        assert h.ctx.extended_mode is False
+        assert h.cmd("AT+EXT=1,SECRET123\r") == "EXT OK\r\r>"
+        assert h.ctx.extended_mode is True
+    finally:
+        phase5_lib.elm327_set_ext_passkey(None)
 
 
 def test_slcan_formatter_and_tcp_loopback_e2e(phase5_lib: ctypes.CDLL) -> None:

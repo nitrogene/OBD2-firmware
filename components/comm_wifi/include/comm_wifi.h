@@ -14,7 +14,7 @@ extern "C" {
 /** @brief Default SoftAP password (open if empty, or >= 8 chars for WPA2). */
 #define COMM_WIFI_DEFAULT_PASS "12345678"
 /** @brief ELM327 Wi-Fi standard TCP port. */
-#define COMM_WIFI_TCP_PORT     35000
+#define COMM_WIFI_TCP_PORT 35000
 
 /**
  * @brief Initialize Wi-Fi SoftAP (192.168.0.10) and ELM327 TCP server (port 35000).

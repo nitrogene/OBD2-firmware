@@ -14,11 +14,11 @@ extern "C" {
 #define KLINE_BAUD_RATE 10400
 
 typedef struct {
-    uint16_t p1_max_ms;      /**< Inter-byte ECU response max (default 20 ms) */
-    uint16_t p2_max_ms;      /**< Tester request -> ECU response max (default 50 ms) */
-    uint16_t p3_min_ms;      /**< Min idle before next tester request (default 55 ms) */
-    uint16_t p4_min_ms;      /**< Inter-byte tester TX spacing (default 5 ms) */
-    uint32_t keepalive_ms;   /**< Periodic TesterPresent interval (default 2000 ms) */
+    uint16_t p1_max_ms;    /**< Inter-byte ECU response max (default 20 ms) */
+    uint16_t p2_max_ms;    /**< Tester request -> ECU response max (default 50 ms) */
+    uint16_t p3_min_ms;    /**< Min idle before next tester request (default 55 ms) */
+    uint16_t p4_min_ms;    /**< Inter-byte tester TX spacing (default 5 ms) */
+    uint32_t keepalive_ms; /**< Periodic TesterPresent interval (default 2000 ms) */
 } kline_timing_cfg_t;
 
 /**
@@ -34,9 +34,7 @@ esp_err_t kline_drv_deinit(void);
 /**
  * @brief Perform 5-Baud Slow Init (bit-bang IO5) and key-byte handshake.
  */
-esp_err_t kline_drv_slow_init(uint8_t target_addr,
-                              kline_proto_type_t *out_proto,
-                              uint8_t *out_kb1,
+esp_err_t kline_drv_slow_init(uint8_t target_addr, kline_proto_type_t *out_proto, uint8_t *out_kb1,
                               uint8_t *out_kb2);
 
 /**
@@ -45,14 +43,21 @@ esp_err_t kline_drv_slow_init(uint8_t target_addr,
 esp_err_t kline_drv_fast_init(uint8_t target_addr, uint8_t source_addr);
 
 /**
- * @brief Transmit a K-Line frame with local echo verification, then read ECU response.
+ * @brief Transmit a K-Line frame with local echo verification (TX-only).
  */
-esp_err_t kline_drv_send_recv(const uint8_t *tx_frame,
-                              size_t tx_len,
-                              uint8_t *rx_buf,
-                              size_t max_rx,
-                              size_t *out_rx_len,
-                              uint32_t timeout_ms);
+esp_err_t kline_drv_send(const uint8_t *tx_frame, size_t tx_len);
+
+/**
+ * @brief Read a K-Line frame or byte sequence using P2/P1 inter-byte framing (RX-only).
+ */
+esp_err_t kline_drv_recv(uint8_t *rx_buf, size_t max_rx, size_t *out_rx_len, uint32_t timeout_ms);
+
+/**
+ * @brief Transmit a K-Line frame with local echo verification, then read ECU response.
+ *        Also supports TX-only (rx_buf == NULL) or RX-only (tx_frame == NULL).
+ */
+esp_err_t kline_drv_send_recv(const uint8_t *tx_frame, size_t tx_len, uint8_t *rx_buf,
+                              size_t max_rx, size_t *out_rx_len, uint32_t timeout_ms);
 
 /**
  * @brief Send periodic keep-alive (TesterPresent 0x3E) if session is idle.

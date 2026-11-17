@@ -11,6 +11,7 @@
 #include "kwp2000.h"
 #include "obd2_autodetect.h"
 #include "power_mgmt.h"
+#include "transport_stream.h"
 #include "twai_driver.h"
 #include "driver/gpio.h"
 #include "driver/twai.h"
@@ -27,11 +28,62 @@
 
 static const char *TAG = "cli";
 
-#define KLINE_UART_PORT  UART_NUM_1
-#define KLINE_BAUD_RATE  10400
+#define KLINE_UART_PORT UART_NUM_1
+#define KLINE_BAUD_RATE 10400
 
-static int cmd_info(int argc, char **argv)
-{
+static bool parse_long_arg(const char *str, long *out_val) {
+    if (str == NULL || *str == '\0' || out_val == NULL) {
+        return false;
+    }
+    char *endptr = NULL;
+    long v = strtol(str, &endptr, 10);
+    if (endptr == str || *endptr != '\0') {
+        return false;
+    }
+    *out_val = v;
+    return true;
+}
+
+static esp_err_t usb_cli_transport_tx(const uint8_t *data, size_t len, void *ctx) {
+    (void)ctx;
+    if (data == NULL || len == 0U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    (void)fwrite(data, 1U, len, stdout);
+    (void)fflush(stdout);
+    return ESP_OK;
+}
+
+static int cmd_at(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Usage: at <AT/OBD command> (e.g. at ATZ, at 010C, at AT+EXT=1)\n");
+        return 1;
+    }
+
+    char line[128];
+    size_t pos = 0U;
+    for (int i = 1; i < argc && pos + 2U < sizeof(line); ++i) {
+        int n =
+            snprintf(&line[pos], sizeof(line) - pos - 1U, (i + 1 < argc) ? "%s " : "%s", argv[i]);
+        if (n > 0) {
+            pos += (size_t)n;
+        }
+    }
+    line[pos++] = '\r';
+    line[pos] = '\0';
+
+    power_mgmt_notify_activity();
+    esp_err_t err = transport_stream_feed_rx(TRANSPORT_ID_USB, (const uint8_t *)line, pos);
+    if (err != ESP_OK) {
+        printf("Transport busy or error: %s\n", esp_err_to_name(err));
+        return 1;
+    }
+    vTaskDelay(pdMS_TO_TICKS(120));
+    printf("\n");
+    return 0;
+}
+
+static int cmd_info(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
@@ -44,19 +96,18 @@ static int cmd_info(int argc, char **argv)
 
     printf("OBD2-firmware MODE_BRINGUP\n");
     printf("  IDF Version : %s\n", esp_get_idf_version());
-    printf("  Chip        : ESP32-S3 rev v%d.%d (%d cores)\n",
-           chip.revision / 100, chip.revision % 100, chip.cores);
+    printf("  Chip        : ESP32-S3 rev v%d.%d (%d cores)\n", chip.revision / 100,
+           chip.revision % 100, chip.cores);
     printf("  Flash       : %lu MB\n", (unsigned long)(flash_size / (1024UL * 1024UL)));
     printf("  PSRAM       : %lu MB\n", (unsigned long)(psram_size / (1024UL * 1024UL)));
-    printf("  Pins        : VBAT=IO%d LED=IO%d KLINE_RX=IO%d KLINE_TX=IO%d TWAI_TX=IO%d TWAI_RX=IO%d\n",
-           (int)BSP_PIN_VBAT_SENSE, (int)BSP_PIN_LED_STATUS,
-           (int)BSP_PIN_KLINE_RX, (int)BSP_PIN_KLINE_TX,
-           (int)BSP_PIN_TWAI_TX, (int)BSP_PIN_TWAI_RX);
+    printf("  Pins        : VBAT=IO%d LED=IO%d KLINE_RX=IO%d KLINE_TX=IO%d TWAI_TX=IO%d "
+           "TWAI_RX=IO%d\n",
+           (int)BSP_PIN_VBAT_SENSE, (int)BSP_PIN_LED_STATUS, (int)BSP_PIN_KLINE_RX,
+           (int)BSP_PIN_KLINE_TX, (int)BSP_PIN_TWAI_TX, (int)BSP_PIN_TWAI_RX);
     return 0;
 }
 
-static int cmd_led(int argc, char **argv)
-{
+static int cmd_led(int argc, char **argv) {
     if (argc < 2) {
         printf("Usage: led <off|breath|blink|solid|burst|sos|duty <0-100>>\n");
         return 1;
@@ -80,9 +131,9 @@ static int cmd_led(int argc, char **argv)
             printf("Usage: led duty <0-100>\n");
             return 1;
         }
-        long val = strtol(argv[2], NULL, 10);
-        if (val < 0 || val > 100) {
-            printf("Error: duty must be 0..100\n");
+        long val = 0;
+        if (!parse_long_arg(argv[2], &val) || val < 0 || val > 100) {
+            printf("Error: duty must be an integer 0..100\n");
             return 1;
         }
         bsp_led_set_duty((uint8_t)val);
@@ -95,8 +146,7 @@ static int cmd_led(int argc, char **argv)
     return 0;
 }
 
-static int cmd_vbat(int argc, char **argv)
-{
+static int cmd_vbat(int argc, char **argv) {
     (void)argc;
     (void)argv;
     power_mgmt_notify_activity();
@@ -109,19 +159,16 @@ static int cmd_vbat(int argc, char **argv)
         return 1;
     }
 
-    printf("V_ADC = %lu mV | V_BAT = %lu mV (%.2f V) [%s]\n",
-           (unsigned long)adc_mv,
-           (unsigned long)vbat_mv,
-           (double)vbat_mv / 1000.0,
+    printf("V_ADC = %lu mV | V_BAT = %lu mV (%.2f V) [%s]\n", (unsigned long)adc_mv,
+           (unsigned long)vbat_mv, (double)vbat_mv / 1000.0,
            power_mgmt_state_to_str(power_classify_vbat_mv(vbat_mv)));
     return 0;
 }
 
-static int cmd_power(int argc, char **argv)
-{
+static int cmd_power(int argc, char **argv) {
     if (argc >= 2 && strcmp(argv[1], "sleep") == 0) {
-        printf("Entering Deep Sleep now (wake on IO%d / IO%d LOW)...\n",
-               (int)BSP_PIN_KLINE_RX, (int)BSP_PIN_TWAI_RX);
+        printf("Entering Deep Sleep now (wake on IO%d / IO%d LOW)...\n", (int)BSP_PIN_KLINE_RX,
+               (int)BSP_PIN_TWAI_RX);
         power_mgmt_enter_deep_sleep();
     }
     if (argc >= 2 && strcmp(argv[1], "selftest") == 0) {
@@ -141,25 +188,32 @@ static int cmd_power(int argc, char **argv)
 
     printf("Power Telemetry (32-sample moving avg):\n");
     printf("  State      : %s\n", power_mgmt_state_to_str(st.state));
-    printf("  V_BAT      : %lu mV (%.2f V)\n", (unsigned long)st.vbat_mv, (double)st.vbat_mv / 1000.0);
+    printf("  V_BAT      : %lu mV (%.2f V)\n", (unsigned long)st.vbat_mv,
+           (double)st.vbat_mv / 1000.0);
     printf("  V_ADC      : %lu mV\n", (unsigned long)st.adc_mv);
-    printf("  Auto-sleep : %s (idle %lu / %lu s)\n",
-           st.auto_sleep_armed ? "ARMED" : "DISARMED",
+    printf("  Auto-sleep : %s (idle %lu / %lu s)\n", st.auto_sleep_armed ? "ARMED" : "DISARMED",
            (unsigned long)(st.inactivity_ms / 1000U),
            (unsigned long)(POWER_INACTIVITY_TIMEOUT_MS / 1000U));
     printf("  Wake cause : %d\n", (int)st.wakeup_cause);
     return 0;
 }
 
-static int cmd_can(int argc, char **argv)
-{
+static int cmd_can(int argc, char **argv) {
     if (argc < 2) {
         printf("Usage: can <ping|pong|rx|probe> [timeout_ms]\n");
         return 1;
     }
 
     const char *sub = argv[1];
-    uint32_t timeout_ms = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 10) : 2000U;
+    uint32_t timeout_ms = 2000U;
+    if (argc >= 3) {
+        long tval = 0;
+        if (!parse_long_arg(argv[2], &tval) || tval <= 0 || tval > 60000) {
+            printf("Error: timeout_ms must be 1..60000\n");
+            return 1;
+        }
+        timeout_ms = (uint32_t)tval;
+    }
     power_mgmt_notify_activity();
 
     if (strcmp(sub, "probe") == 0) {
@@ -195,9 +249,8 @@ static int cmd_can(int argc, char **argv)
             twai_drv_frame_t rx = {0};
             err = twai_drv_receive(&rx, timeout_ms);
             if (err == ESP_OK) {
-                printf("CAN RX ID=0x%03lX DLC=%d data=%02X %02X %02X %02X\n",
-                       (unsigned long)rx.id, rx.dlc,
-                       rx.data[0], rx.data[1], rx.data[2], rx.data[3]);
+                printf("CAN RX ID=0x%03lX DLC=%d data=%02X %02X %02X %02X\n", (unsigned long)rx.id,
+                       rx.dlc, rx.data[0], rx.data[1], rx.data[2], rx.data[3]);
             } else {
                 printf("CAN RX timeout/error: %s\n", esp_err_to_name(err));
                 rc = 1;
@@ -228,8 +281,8 @@ static int cmd_can(int argc, char **argv)
         twai_drv_frame_t rx = {0};
         err = twai_drv_receive(&rx, timeout_ms);
         if (err == ESP_OK) {
-            printf("CAN RX ID=0x%03lX ext=%d DLC=%d\n",
-                   (unsigned long)rx.id, rx.extd ? 1 : 0, rx.dlc);
+            printf("CAN RX ID=0x%03lX ext=%d DLC=%d\n", (unsigned long)rx.id, rx.extd ? 1 : 0,
+                   rx.dlc);
         } else {
             printf("CAN RX: %s\n", esp_err_to_name(err));
             rc = 1;
@@ -243,8 +296,7 @@ static int cmd_can(int argc, char **argv)
     return rc;
 }
 
-static int cmd_kline(int argc, char **argv)
-{
+static int cmd_kline(int argc, char **argv) {
     if (argc < 2) {
         printf("Usage: kline <echo|pulse>\n");
         return 1;
@@ -266,21 +318,23 @@ static int cmd_kline(int argc, char **argv)
             return 1;
         }
         (void)uart_param_config(KLINE_UART_PORT, &uart_cfg);
-        (void)uart_set_pin(KLINE_UART_PORT, BSP_PIN_KLINE_TX, BSP_PIN_KLINE_RX,
-                           UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+        (void)uart_set_pin(KLINE_UART_PORT, BSP_PIN_KLINE_TX, BSP_PIN_KLINE_RX, UART_PIN_NO_CHANGE,
+                           UART_PIN_NO_CHANGE);
         (void)uart_flush_input(KLINE_UART_PORT);
 
         const uint8_t tx_bytes[4] = {0x81, 0x10, 0xF1, 0x81};
         uint8_t rx_bytes[4] = {0};
         int written = uart_write_bytes(KLINE_UART_PORT, tx_bytes, sizeof(tx_bytes));
         (void)uart_wait_tx_done(KLINE_UART_PORT, pdMS_TO_TICKS(100));
-        int read_len = uart_read_bytes(KLINE_UART_PORT, rx_bytes, sizeof(rx_bytes), pdMS_TO_TICKS(100));
+        int read_len =
+            uart_read_bytes(KLINE_UART_PORT, rx_bytes, sizeof(rx_bytes), pdMS_TO_TICKS(100));
 
         printf("K-Line TX %d bytes, RX echo %d bytes:", written, read_len);
         for (int i = 0; i < read_len; ++i) {
             printf(" %02X", rx_bytes[i]);
         }
-        bool match = (read_len == (int)sizeof(tx_bytes)) && (memcmp(tx_bytes, rx_bytes, sizeof(tx_bytes)) == 0);
+        bool match = (read_len == (int)sizeof(tx_bytes)) &&
+                     (memcmp(tx_bytes, rx_bytes, sizeof(tx_bytes)) == 0);
         printf(" -> %s\n", match ? "ECHO OK" : "ECHO MISMATCH/NO TRANSCEIVER");
 
         (void)uart_driver_delete(KLINE_UART_PORT);
@@ -314,8 +368,7 @@ static int cmd_kline(int argc, char **argv)
     return 1;
 }
 
-static int cmd_proto(int argc, char **argv)
-{
+static int cmd_proto(int argc, char **argv) {
     (void)argc;
     (void)argv;
     power_mgmt_notify_activity();
@@ -330,21 +383,21 @@ static int cmd_proto(int argc, char **argv)
     return 1;
 }
 
-static int cmd_sim(int argc, char **argv)
-{
+static int cmd_sim(int argc, char **argv) {
     ecu_sim_state_t *sim = ecu_simulator_state();
     if (argc < 2 || strcmp(argv[1], "status") == 0) {
-        printf("ECU Sim: RPM=%u Speed=%u km/h Coolant=%d C DTCs=%u VIN=%s\n",
-               (unsigned)sim->rpm,
-               (unsigned)sim->speed_kmh,
-               (int)sim->coolant_c,
-               (unsigned)sim->dtc_count,
-               sim->vin);
+        ecu_simulator_lock();
+        printf("ECU Sim: RPM=%u Speed=%u km/h Coolant=%d C V_BAT=%lu mV DTCs=%u VIN=%s\n",
+               (unsigned)sim->rpm, (unsigned)sim->speed_kmh, (int)sim->coolant_c,
+               (unsigned long)sim->vbat_mv, (unsigned)sim->dtc_count, sim->vin);
+        ecu_simulator_unlock();
         return 0;
     }
 
     if (strcmp(argv[1], "clear") == 0) {
+        ecu_simulator_lock();
         ecu_sim_clear_dtcs(sim);
+        ecu_simulator_unlock();
         printf("ECU Sim: DTCs cleared\n");
         return 0;
     }
@@ -357,55 +410,67 @@ static int cmd_sim(int argc, char **argv)
         bool can = (argc < 3 || strcmp(argv[2], "can") == 0 || strcmp(argv[2], "both") == 0);
         bool kline = (argc < 3 || strcmp(argv[2], "kline") == 0 || strcmp(argv[2], "both") == 0);
         esp_err_t err = ecu_simulator_start_bus(can, kline);
-        printf("ECU Sim: physical bus mode %s (%s)\n",
-               (err == ESP_OK) ? "started" : "failed",
+        printf("ECU Sim: physical bus mode %s (%s)\n", (err == ESP_OK) ? "started" : "failed",
                esp_err_to_name(err));
         return (err == ESP_OK) ? 0 : 1;
     }
 
     if (argc < 3) {
-        printf("Usage: sim <status|rpm <v>|speed <v>|coolant <v>|dtc <P0100>|clear>\n");
+        printf("Usage: sim <status|rpm <v>|speed <v>|coolant <v>|vbat <mv>|dtc <P0100>|clear|start "
+               "[can|kline|both]|stop>\n");
         return 1;
     }
 
     if (strcmp(argv[1], "rpm") == 0) {
-        long val = strtol(argv[2], NULL, 10);
-        if (val < 0 || val > 16383) {
-            printf("Error: RPM must be 0..16383\n");
+        long val = 0;
+        if (!parse_long_arg(argv[2], &val) || val < 0 || val > 16383) {
+            printf("Error: RPM must be an integer 0..16383\n");
             return 1;
         }
+        ecu_simulator_lock();
         ecu_sim_set_rpm(sim, (uint16_t)val);
+        ecu_simulator_unlock();
         printf("ECU Sim: RPM=%ld\n", val);
     } else if (strcmp(argv[1], "speed") == 0) {
-        long val = strtol(argv[2], NULL, 10);
-        if (val < 0 || val > 255) {
-            printf("Error: speed must be 0..255 km/h\n");
+        long val = 0;
+        if (!parse_long_arg(argv[2], &val) || val < 0 || val > 255) {
+            printf("Error: speed must be an integer 0..255 km/h\n");
             return 1;
         }
+        ecu_simulator_lock();
         ecu_sim_set_speed(sim, (uint8_t)val);
+        ecu_simulator_unlock();
         printf("ECU Sim: Speed=%ld km/h\n", val);
     } else if (strcmp(argv[1], "coolant") == 0) {
-        long val = strtol(argv[2], NULL, 10);
-        if (val < -40 || val > 215) {
-            printf("Error: coolant must be -40..215 C\n");
+        long val = 0;
+        if (!parse_long_arg(argv[2], &val) || val < -40 || val > 215) {
+            printf("Error: coolant must be an integer -40..215 C\n");
             return 1;
         }
+        ecu_simulator_lock();
         ecu_sim_set_coolant(sim, (int16_t)val);
+        ecu_simulator_unlock();
         printf("ECU Sim: Coolant=%ld C\n", val);
     } else if (strcmp(argv[1], "dtc") == 0) {
-        if (ecu_sim_inject_dtc(sim, argv[2]) != 0) {
+        ecu_simulator_lock();
+        int rc = ecu_sim_inject_dtc(sim, argv[2]);
+        uint8_t cnt = sim->dtc_count;
+        ecu_simulator_unlock();
+        if (rc != 0) {
             printf("Error: invalid DTC '%s' or table full\n", argv[2]);
             return 1;
         }
-        printf("ECU Sim: injected DTC %s (count=%u)\n", argv[2], (unsigned)sim->dtc_count);
+        printf("ECU Sim: injected DTC %s (count=%u)\n", argv[2], (unsigned)cnt);
     } else if (strcmp(argv[1], "vbat") == 0) {
-        long val = strtol(argv[2], NULL, 10);
-        if (val < 0 || val > 24000) {
-            printf("Error: vbat must be 0..24000 mV\n");
+        long val = 0;
+        if (!parse_long_arg(argv[2], &val) || val < 0 || val > 24000) {
+            printf("Error: vbat must be an integer 0..24000 mV\n");
             return 1;
         }
         bsp_vbat_set_sim_mv((uint32_t)val);
+        ecu_simulator_lock();
         sim->vbat_mv = (uint32_t)val;
+        ecu_simulator_unlock();
         printf("ECU Sim: simulated V_BAT=%ld mV\n", val);
     } else {
         printf("Unknown subcommand '%s'\n", argv[1]);
@@ -414,14 +479,19 @@ static int cmd_sim(int argc, char **argv)
     return 0;
 }
 
-static void register_commands(void)
-{
+static void register_commands(void) {
     const esp_console_cmd_t cmds[] = {
         {
             .command = "info",
             .help = "Print chip, memory, and BSP GPIO info",
             .hint = NULL,
             .func = &cmd_info,
+        },
+        {
+            .command = "at",
+            .help = "Send an ELM327 AT or hex OBD/UDS command over USB transport: at <cmd>",
+            .hint = NULL,
+            .func = &cmd_at,
         },
         {
             .command = "led",
@@ -443,7 +513,7 @@ static void register_commands(void)
         },
         {
             .command = "can",
-            .help = "500 kbps TWAI bringup: can <ping|pong|rx> [timeout_ms]",
+            .help = "500 kbps TWAI bringup: can <ping|pong|rx|probe> [timeout_ms]",
             .hint = NULL,
             .func = &cmd_can,
         },
@@ -461,7 +531,8 @@ static void register_commands(void)
         },
         {
             .command = "sim",
-            .help = "ECU simulator control: sim <status|rpm <v>|speed <v>|coolant <v>|dtc <P0100>|clear>",
+            .help = "ECU simulator control: sim <status|rpm <v>|speed <v>|coolant <v>|vbat "
+                    "<mv>|dtc <P0100>|clear|start|stop>",
             .hint = NULL,
             .func = &cmd_sim,
         },
@@ -472,14 +543,16 @@ static void register_commands(void)
     }
 }
 
-esp_err_t cli_start(void)
-{
+esp_err_t cli_start(void) {
+    (void)transport_stream_register_tx(TRANSPORT_ID_USB, usb_cli_transport_tx, NULL);
+
     esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
     repl_cfg.prompt = "obd2> ";
     repl_cfg.max_cmdline_length = 256;
 
-    esp_console_dev_usb_serial_jtag_config_t hw_cfg = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
+    esp_console_dev_usb_serial_jtag_config_t hw_cfg =
+        ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
     esp_err_t err = esp_console_new_repl_usb_serial_jtag(&hw_cfg, &repl_cfg, &repl);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "USB Serial/JTAG REPL init failed: %s", esp_err_to_name(err));

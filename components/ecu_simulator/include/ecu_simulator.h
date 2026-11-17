@@ -33,6 +33,16 @@ void ecu_simulator_stop_bus(void);
  */
 bool ecu_simulator_is_bus_running(void);
 
+/**
+ * @brief Acquire mutex protecting the global ECU simulator state.
+ */
+void ecu_simulator_lock(void);
+
+/**
+ * @brief Release mutex protecting the global ECU simulator state.
+ */
+void ecu_simulator_unlock(void);
+
 #ifdef __cplusplus
 }
 #endif

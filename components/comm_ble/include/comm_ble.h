@@ -43,6 +43,11 @@ bool comm_ble_is_connected(void);
  */
 uint16_t comm_ble_get_mtu(void);
 
+/**
+ * @brief Configure whether BLE GATT writes require an encrypted/bonded link (persisted in NVS).
+ */
+esp_err_t comm_ble_set_require_encryption(bool require_enc);
+
 #ifdef __cplusplus
 }
 #endif

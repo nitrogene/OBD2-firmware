@@ -11,13 +11,13 @@ extern "C" {
 #endif
 
 /* Voltage thresholds in millivolts (per README.md Section 4) */
-#define POWER_THRESH_USB_ONLY_MV       2800U
-#define POWER_THRESH_CRITICAL_MV       11800U
-#define POWER_THRESH_ENGINE_ON_MV      13200U
-#define POWER_THRESH_OVERVOLTAGE_MV    15500U
+#define POWER_THRESH_USB_ONLY_MV 2800U
+#define POWER_THRESH_CRITICAL_MV 11800U
+#define POWER_THRESH_ENGINE_ON_MV 13200U
+#define POWER_THRESH_OVERVOLTAGE_MV 15500U
 
 /* 10-minute inactivity timeout before Deep Sleep */
-#define POWER_INACTIVITY_TIMEOUT_MS    (10UL * 60UL * 1000UL)
+#define POWER_INACTIVITY_TIMEOUT_MS (10UL * 60UL * 1000UL)
 
 /**
  * @brief Vehicle power state derived from VBAT_SENSE (IO1 / ADC1_CH0).
@@ -73,7 +73,8 @@ esp_err_t power_mgmt_get_status(power_status_t *out_status);
 void power_mgmt_notify_activity(void);
 
 /**
- * @brief Configure ext1 wake-up (IO4 KLINE_RX / IO16 TWAI_RX LOW) and enter Deep Sleep.
+ * @brief Configure ext1 wake-up (IO4 KLINE_RX / IO16 TWAI_RX LOW) and periodic
+ *        VBAT_SENSE (> 13.2 V alternator crank) wake-up, then enter Deep Sleep.
  */
 void __attribute__((noreturn)) power_mgmt_enter_deep_sleep(void);
 

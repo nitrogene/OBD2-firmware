@@ -24,8 +24,7 @@ static kline_timing_cfg_t s_timings = {
 };
 static int64_t s_last_tx_us = 0;
 
-static esp_err_t install_uart(void)
-{
+static esp_err_t install_uart(void) {
     if (s_uart_installed) {
         return ESP_OK;
     }
@@ -39,31 +38,29 @@ static esp_err_t install_uart(void)
         .source_clk = UART_SCLK_DEFAULT,
     };
 
-    ESP_RETURN_ON_ERROR(uart_driver_install(KLINE_UART_PORT, 512, 0, 0, NULL, 0), TAG, "uart_driver_install");
+    ESP_RETURN_ON_ERROR(uart_driver_install(KLINE_UART_PORT, 512, 0, 0, NULL, 0), TAG,
+                        "uart_driver_install");
     ESP_RETURN_ON_ERROR(uart_param_config(KLINE_UART_PORT, &cfg), TAG, "uart_param_config");
-    ESP_RETURN_ON_ERROR(
-        uart_set_pin(KLINE_UART_PORT, BSP_PIN_KLINE_TX, BSP_PIN_KLINE_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
-        TAG,
-        "uart_set_pin");
+    ESP_RETURN_ON_ERROR(uart_set_pin(KLINE_UART_PORT, BSP_PIN_KLINE_TX, BSP_PIN_KLINE_RX,
+                                     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE),
+                        TAG, "uart_set_pin");
 
     s_uart_installed = true;
     return ESP_OK;
 }
 
-esp_err_t kline_drv_init(const kline_timing_cfg_t *timings)
-{
+esp_err_t kline_drv_init(const kline_timing_cfg_t *timings) {
     if (timings != NULL) {
         s_timings = *timings;
     }
     ESP_RETURN_ON_ERROR(install_uart(), TAG, "install_uart failed");
     s_last_tx_us = esp_timer_get_time();
-    ESP_LOGI(TAG, "K-Line UART1 initialized at %d baud (P3=%u ms, P4=%u ms)",
-             KLINE_BAUD_RATE, s_timings.p3_min_ms, s_timings.p4_min_ms);
+    ESP_LOGI(TAG, "K-Line UART1 initialized at %d baud (P3=%u ms, P4=%u ms)", KLINE_BAUD_RATE,
+             s_timings.p3_min_ms, s_timings.p4_min_ms);
     return ESP_OK;
 }
 
-esp_err_t kline_drv_deinit(void)
-{
+esp_err_t kline_drv_deinit(void) {
     if (!s_uart_installed) {
         return ESP_OK;
     }
@@ -72,16 +69,14 @@ esp_err_t kline_drv_deinit(void)
     return err;
 }
 
-static void enforce_p3_gap(void)
-{
+static void enforce_p3_gap(void) {
     int64_t elapsed_ms = (esp_timer_get_time() - s_last_tx_us) / 1000LL;
     if (elapsed_ms >= 0 && elapsed_ms < (int64_t)s_timings.p3_min_ms) {
         vTaskDelay(pdMS_TO_TICKS((uint32_t)(s_timings.p3_min_ms - elapsed_ms)));
     }
 }
 
-static esp_err_t send_with_echo_check(const uint8_t *tx_frame, size_t tx_len)
-{
+static esp_err_t send_with_echo_check(const uint8_t *tx_frame, size_t tx_len) {
     (void)uart_flush_input(KLINE_UART_PORT);
 
     for (size_t i = 0; i < tx_len; ++i) {
@@ -107,19 +102,18 @@ static esp_err_t send_with_echo_check(const uint8_t *tx_frame, size_t tx_len)
     return ESP_OK;
 }
 
-esp_err_t kline_drv_send_recv(const uint8_t *tx_frame,
-                              size_t tx_len,
-                              uint8_t *rx_buf,
-                              size_t max_rx,
-                              size_t *out_rx_len,
-                              uint32_t timeout_ms)
-{
-    if (!s_uart_installed || tx_frame == NULL || tx_len == 0U || rx_buf == NULL || out_rx_len == NULL) {
+esp_err_t kline_drv_send(const uint8_t *tx_frame, size_t tx_len) {
+    if (!s_uart_installed || tx_frame == NULL || tx_len == 0U) {
         return ESP_ERR_INVALID_ARG;
     }
-
     enforce_p3_gap();
-    ESP_RETURN_ON_ERROR(send_with_echo_check(tx_frame, tx_len), TAG, "TX echo check failed");
+    return send_with_echo_check(tx_frame, tx_len);
+}
+
+esp_err_t kline_drv_recv(uint8_t *rx_buf, size_t max_rx, size_t *out_rx_len, uint32_t timeout_ms) {
+    if (!s_uart_installed || rx_buf == NULL || max_rx == 0U || out_rx_len == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     size_t total = 0U;
     uint32_t wait_ms = (timeout_ms > 0U) ? timeout_ms : s_timings.p2_max_ms;
@@ -136,12 +130,43 @@ esp_err_t kline_drv_send_recv(const uint8_t *tx_frame,
     }
 
     *out_rx_len = total;
-    s_last_tx_us = esp_timer_get_time();
-    return (total > 0U) ? ESP_OK : ESP_ERR_TIMEOUT;
+    if (total > 0U) {
+        s_last_tx_us = esp_timer_get_time();
+        return ESP_OK;
+    }
+    return ESP_ERR_TIMEOUT;
 }
 
-static void bitbang_5baud_byte(uint8_t addr)
-{
+esp_err_t kline_drv_send_recv(const uint8_t *tx_frame, size_t tx_len, uint8_t *rx_buf,
+                              size_t max_rx, size_t *out_rx_len, uint32_t timeout_ms) {
+    if (!s_uart_installed) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    bool do_tx = (tx_frame != NULL && tx_len > 0U);
+    bool do_rx = (rx_buf != NULL && max_rx > 0U);
+    if (!do_tx && !do_rx) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (do_tx) {
+        ESP_RETURN_ON_ERROR(kline_drv_send(tx_frame, tx_len), TAG, "TX echo check failed");
+    }
+
+    if (!do_rx) {
+        if (out_rx_len != NULL) {
+            *out_rx_len = 0U;
+        }
+        return ESP_OK;
+    }
+
+    if (out_rx_len == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return kline_drv_recv(rx_buf, max_rx, out_rx_len, timeout_ms);
+}
+
+static void bitbang_5baud_byte(uint8_t addr) {
     /* 200 ms per bit: Start (0), 8 data bits LSB-first, Stop (1) */
     (void)gpio_set_level(BSP_PIN_KLINE_TX, 0);
     vTaskDelay(pdMS_TO_TICKS(200));
@@ -155,11 +180,8 @@ static void bitbang_5baud_byte(uint8_t addr)
     vTaskDelay(pdMS_TO_TICKS(200));
 }
 
-esp_err_t kline_drv_slow_init(uint8_t target_addr,
-                              kline_proto_type_t *out_proto,
-                              uint8_t *out_kb1,
-                              uint8_t *out_kb2)
-{
+esp_err_t kline_drv_slow_init(uint8_t target_addr, kline_proto_type_t *out_proto, uint8_t *out_kb1,
+                              uint8_t *out_kb2) {
     (void)kline_drv_deinit();
 
     const gpio_config_t tx_cfg = {
@@ -206,8 +228,8 @@ esp_err_t kline_drv_slow_init(uint8_t target_addr,
     uint8_t inv_addr = 0;
     got = uart_read_bytes(KLINE_UART_PORT, &inv_addr, 1, pdMS_TO_TICKS(100));
     if (got != 1 || inv_addr != (uint8_t)(~target_addr)) {
-        ESP_LOGW(TAG, "5-baud ~addr mismatch (got=0x%02X expected=0x%02X)",
-                 inv_addr, (uint8_t)(~target_addr));
+        ESP_LOGW(TAG, "5-baud ~addr mismatch (got=0x%02X expected=0x%02X)", inv_addr,
+                 (uint8_t)(~target_addr));
         return ESP_ERR_INVALID_RESPONSE;
     }
 
@@ -216,8 +238,7 @@ esp_err_t kline_drv_slow_init(uint8_t target_addr,
     return ESP_OK;
 }
 
-esp_err_t kline_drv_fast_init(uint8_t target_addr, uint8_t source_addr)
-{
+esp_err_t kline_drv_fast_init(uint8_t target_addr, uint8_t source_addr) {
     (void)kline_drv_deinit();
 
     const gpio_config_t tx_cfg = {
@@ -242,18 +263,20 @@ esp_err_t kline_drv_fast_init(uint8_t target_addr, uint8_t source_addr)
 
     const uint8_t start_comm = 0x81U;
     uint8_t tx[8];
-    int tx_len = kline_build_kwp_frame(0x80U, target_addr, source_addr, &start_comm, 1, tx, sizeof(tx));
+    int tx_len =
+        kline_build_kwp_frame(0x80U, target_addr, source_addr, &start_comm, 1, tx, sizeof(tx));
     if (tx_len < 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
     uint8_t rx[16] = {0};
     size_t rx_len = 0U;
-    ESP_RETURN_ON_ERROR(kline_drv_send_recv(tx, (size_t)tx_len, rx, sizeof(rx), &rx_len, 150),
-                        TAG, "StartCommunication failed");
+    ESP_RETURN_ON_ERROR(kline_drv_send_recv(tx, (size_t)tx_len, rx, sizeof(rx), &rx_len, 150), TAG,
+                        "StartCommunication failed");
 
     kline_frame_t frame;
-    if (kline_parse_frame(rx, rx_len, &frame) != 0 || frame.payload_len < 1U || frame.payload[0] != 0xC1U) {
+    if (kline_parse_frame(rx, rx_len, &frame) != 0 || frame.payload_len < 1U ||
+        frame.payload[0] != 0xC1U) {
         return ESP_ERR_INVALID_RESPONSE;
     }
 
@@ -261,8 +284,7 @@ esp_err_t kline_drv_fast_init(uint8_t target_addr, uint8_t source_addr)
     return ESP_OK;
 }
 
-esp_err_t kline_drv_keepalive_tick(uint8_t target_addr, uint8_t source_addr)
-{
+esp_err_t kline_drv_keepalive_tick(uint8_t target_addr, uint8_t source_addr) {
     if (!s_uart_installed) {
         return ESP_ERR_INVALID_STATE;
     }

@@ -2,35 +2,39 @@
 
 #include <stddef.h>
 
-bool obd2_is_service_allowed(uint8_t sid, bool extended_unlocked)
-{
+bool obd2_is_service_allowed(uint8_t sid, bool extended_unlocked) {
     if (extended_unlocked) {
         return true;
     }
 
     switch (sid) {
+    case 0x11U: /* ECUReset */
     case 0x27U: /* SecurityAccess */
+    case 0x28U: /* CommunicationControl */
+    case 0x2EU: /* WriteDataByIdentifier */
+    case 0x2FU: /* InputOutputControlByIdentifier */
+    case 0x30U: /* InputOutputControlByLocalIdentifier */
     case 0x31U: /* RoutineControl */
     case 0x34U: /* RequestDownload */
     case 0x35U: /* RequestUpload */
     case 0x36U: /* TransferData */
     case 0x37U: /* RequestTransferExit */
+    case 0x3BU: /* WriteDataByLocalIdentifier */
+    case 0x3DU: /* WriteMemoryByAddress */
+    case 0x85U: /* ControlDTCSetting */
         return false;
     default:
         return true;
     }
 }
 
-int obd2_build_request(uint8_t mode, uint8_t pid, uint8_t *out_buf, size_t max_len)
-{
+int obd2_build_request(uint8_t mode, uint8_t pid, uint8_t *out_buf, size_t max_len) {
     if (out_buf == NULL || max_len < 1U || mode < 0x01U || mode > 0x0AU) {
         return -1;
     }
 
-    if (mode == OBD2_MODE_READ_DTCS ||
-        mode == OBD2_MODE_CLEAR_DTCS ||
-        mode == OBD2_MODE_PENDING_DTCS ||
-        mode == OBD2_MODE_PERMANENT_DTCS) {
+    if (mode == OBD2_MODE_READ_DTCS || mode == OBD2_MODE_CLEAR_DTCS ||
+        mode == OBD2_MODE_PENDING_DTCS || mode == OBD2_MODE_PERMANENT_DTCS) {
         out_buf[0] = mode;
         return 1;
     }
@@ -43,14 +47,12 @@ int obd2_build_request(uint8_t mode, uint8_t pid, uint8_t *out_buf, size_t max_l
     return 2;
 }
 
-static char hex_nibble(uint8_t n)
-{
+static char hex_nibble(uint8_t n) {
     n &= 0x0FU;
     return (n < 10U) ? (char)('0' + n) : (char)('A' + (n - 10U));
 }
 
-static int parse_hex_nibble(char c)
-{
+static int parse_hex_nibble(char c) {
     if (c >= '0' && c <= '9') {
         return c - '0';
     }
@@ -63,8 +65,7 @@ static int parse_hex_nibble(char c)
     return -1;
 }
 
-int obd2_decode_dtc(uint8_t b0, uint8_t b1, char out_str[6])
-{
+int obd2_decode_dtc(uint8_t b0, uint8_t b1, char out_str[6]) {
     static const char prefixes[4] = {'P', 'C', 'B', 'U'};
     if (out_str == NULL) {
         return -1;
@@ -79,8 +80,7 @@ int obd2_decode_dtc(uint8_t b0, uint8_t b1, char out_str[6])
     return 0;
 }
 
-int obd2_encode_dtc(const char *dtc_str, uint8_t out_bytes[2])
-{
+int obd2_encode_dtc(const char *dtc_str, uint8_t out_bytes[2]) {
     if (dtc_str == NULL || out_bytes == NULL) {
         return -1;
     }
@@ -122,11 +122,7 @@ int obd2_encode_dtc(const char *dtc_str, uint8_t out_bytes[2])
     return 0;
 }
 
-int obd2_scale_mode01_pid(uint8_t pid,
-                          const uint8_t *data,
-                          uint8_t len,
-                          int32_t *out_val_x100)
-{
+int obd2_scale_mode01_pid(uint8_t pid, const uint8_t *data, uint8_t len, int32_t *out_val_x100) {
     if (data == NULL || out_val_x100 == NULL || len < 1U) {
         return -1;
     }
@@ -153,11 +149,11 @@ int obd2_scale_mode01_pid(uint8_t pid,
         *out_val_x100 = (int32_t)data[0] * 100;
         return 0;
 
-    case 0x42U: /* Control module voltage: (256*A + B) / 1000 V -> V*100 */
+    case 0x42U: /* Control module voltage: (256*A + B) / 1000 V -> V*100 (rounded) */
         if (len < 2U) {
             return -1;
         }
-        *out_val_x100 = ((int32_t)data[0] * 256 + (int32_t)data[1]) / 10;
+        *out_val_x100 = ((int32_t)data[0] * 256 + (int32_t)data[1] + 5) / 10;
         return 0;
 
     default:

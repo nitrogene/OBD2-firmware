@@ -72,6 +72,17 @@ def phase4_lib(tmp_path_factory: pytest.TempPathFactory) -> ctypes.CDLL:
     ]
     lib.kline_build_kwp_frame.restype = ctypes.c_int
 
+    lib.kline_build_iso9141_frame.argtypes = [
+        ctypes.c_uint8,
+        ctypes.c_uint8,
+        ctypes.c_uint8,
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_uint8,
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+    ]
+    lib.kline_build_iso9141_frame.restype = ctypes.c_int
+
     lib.kline_parse_frame.argtypes = [
         ctypes.POINTER(ctypes.c_uint8),
         ctypes.c_size_t,
@@ -121,6 +132,7 @@ def phase4_lib(tmp_path_factory: pytest.TempPathFactory) -> ctypes.CDLL:
         ctypes.c_uint8,
         ctypes.POINTER(ctypes.c_uint8),
         ctypes.c_uint8,
+        ctypes.c_bool,
         ctypes.POINTER(ctypes.c_uint8),
         ctypes.c_size_t,
     ]
@@ -169,9 +181,18 @@ def test_kline_framing_checksum_and_echo(phase4_lib: ctypes.CDLL) -> None:
     assert parsed.target == 0x10 and parsed.source == 0xF1
     assert bytes(parsed.payload[: parsed.payload_len]) == b"\x81"
 
+    # ISO 9141-2 frame (0x68 0x6A 0xF1 0x01 0x00 CS)
+    iso_payload = (ctypes.c_uint8 * 2)(0x01, 0x00)
+    iso_total = phase4_lib.kline_build_iso9141_frame(0x68, 0x6A, 0xF1, iso_payload, 2, out, 16)
+    assert iso_total == 6
+    assert bytes(out[:iso_total]) == b"\x68\x6a\xf1\x01\x00\xc4"
+    assert phase4_lib.kline_parse_frame(out, iso_total, ctypes.byref(parsed)) == 0
+    assert parsed.fmt == 0x68 and parsed.target == 0x6A and parsed.source == 0xF1
+    assert bytes(parsed.payload[: parsed.payload_len]) == b"\x01\x00"
+
     # Corrupt checksum -> error
-    out[4] ^= 0x01
-    assert phase4_lib.kline_parse_frame(out, total, ctypes.byref(parsed)) < 0
+    out[5] ^= 0x01
+    assert phase4_lib.kline_parse_frame(out, iso_total, ctypes.byref(parsed)) < 0
 
     # Echo verification
     tx = (ctypes.c_uint8 * 4)(0x81, 0x10, 0xF1, 0x81)
@@ -210,6 +231,11 @@ def test_obd2_mode01_pid_scaling(phase4_lib: ctypes.CDLL) -> None:
     assert phase4_lib.obd2_scale_mode01_pid(0x0C, d2, 2, ctypes.byref(val)) == 0
     assert val.value == 75000
 
+    # Control module voltage (PID 0x42): 13855 mV -> nearest 0.01 V = 1386
+    d_vbat = (ctypes.c_uint8 * 2)(0x36, 0x1F)
+    assert phase4_lib.obd2_scale_mode01_pid(0x42, d_vbat, 2, ctypes.byref(val)) == 0
+    assert val.value == 1386
+
 
 def test_kwp2000_services_and_security_gating(phase4_lib: ctypes.CDLL) -> None:
     out = (ctypes.c_uint8 * 32)()
@@ -221,8 +247,9 @@ def test_kwp2000_services_and_security_gating(phase4_lib: ctypes.CDLL) -> None:
     assert phase4_lib.kline_parse_frame(out, n, ctypes.byref(parsed)) == 0
     assert bytes(parsed.payload[: parsed.payload_len]) == b"\x21\x01"
 
-    # InputOutputControlByLocalIdentifier (0x30) on ABS (0x58)
-    n_io = phase4_lib.kwp2000_build_io_control(0x58, 0x05, 0x07, None, 0, out, 32)
+    # InputOutputControlByLocalIdentifier (0x30) on ABS (0x58): blocked when unlocked=False, allowed when unlocked=True
+    assert phase4_lib.kwp2000_build_io_control(0x58, 0x05, 0x07, None, 0, False, out, 32) == -2
+    n_io = phase4_lib.kwp2000_build_io_control(0x58, 0x05, 0x07, None, 0, True, out, 32)
     assert n_io == 7
 
     # ReadDTC (0x18) & ClearDTC (0x14)
@@ -230,7 +257,7 @@ def test_kwp2000_services_and_security_gating(phase4_lib: ctypes.CDLL) -> None:
     assert phase4_lib.kwp2000_build_clear_dtc(0x10, 0xFF00, out, 32) == 7
 
     # Sensitive services MUST be blocked when extended_unlocked=False
-    for blocked_sid in (0x27, 0x31, 0x34, 0x35, 0x36, 0x37):
+    for blocked_sid in (0x11, 0x27, 0x28, 0x2E, 0x2F, 0x30, 0x31, 0x34, 0x35, 0x36, 0x37, 0x3B, 0x3D, 0x85):
         assert phase4_lib.obd2_is_service_allowed(blocked_sid, False) is False
         rc = phase4_lib.kwp2000_build_service(0x10, blocked_sid, None, 0, False, out, 32)
         assert rc == -2  # KWP_ERR_SECURITY_BLOCKED
