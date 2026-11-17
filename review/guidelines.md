@@ -41,19 +41,29 @@ Every review **must begin** with this metadata block to guarantee full audit tra
 - Cross-check documentation claims against actual implementation and authoritative references before raising an alert.
 
 ### 2.1 Project Context & Known Constraints
-- **[TODO: Target Environment & Scope]** *(Define operational limits, target platforms, or regulatory boundaries.)*
-- **[TODO: Core Stack & Architecture]** *(List key frameworks, MCUs, protocols, or structural choices.)*
-- **[TODO: Current Progress State]** *(Point to `todo.md` or design docs so reviewers avoid flagging already-arbitrated items.)*
+- **Target Environment & Scope:** Automotive 12V passenger vehicles only (SAE J1962 Type A). Never target 24V commercial systems. Target MCU is `ESP32-S3-WROOM-1-N16R2` (`16 MB` Quad SPI Flash, `2 MB` Octal SPI PSRAM, `3.3V` logic — GPIOs are **not** 5V tolerant, `Vmax = 3.6 V`).
+- **Core Stack & Architecture:** ESP-IDF `v5.5.6` / FreeRTOS modular firmware under `components/` (`bsp`, `power_mgmt`, `twai_driver`, `isotp`, `kline_driver`, `obd2_stack`, `kwp2000`, `transport_stream`, `elm327_emu`, `ecu_simulator`, `comm_ble`, `comm_wifi`, `virtual_bench_ui`). Dual build profiles: **Standard Hardware** (`sdkconfig.defaults`) and **LilyGO TTGO T-Display S3 Virtual Bench** (`sdkconfig.virtual_bench`, `CONFIG_OBD2_VIRTUAL_BENCH=y`).
+- **Current Progress State:** Check `todo.md`, `README.md`, and `AGENTS.md` before raising findings to distinguish intentional roadmap items from regressions or unfulfilled claims.
 
 ### 2.2 Domain-Specific Audit Axes
-- **[TODO: Axis 1 — Safety, Security & Failure Modes]**
-- **[TODO: Axis 2 — Correctness, Timing & Concurrency]**
-- **[TODO: Axis 3 — Interfaces, Protocols & Compatibility]**
-- **[TODO: Axis 4 — Performance, Resources & Cost/DFM]**
-- **[TODO: Axis 5 — Maintainability, Testing & Documentation]**
+- **Axis 1 — Safety, Security & Failure Modes:**
+  - Verify wireless transport security (`comm_wifi` HTTP/OTA/TCP, `comm_ble` GATT permissions, no plaintext credential leaks or Stored XSS on `GET /`, authentication on `/config`, `/ota`, `/factory-reset`, and `AT+EXT` / `AT+FACTORY`).
+  - Verify diagnostic service gating (`obd2_is_service_allowed()` must block `0x11`, `0x27`, `0x28`, `0x2E`, `0x2F`, `0x30`, `0x31`, `0x34`–`0x37`, `0x3B`, `0x3D`, `0x85` when `extended_unlocked == false`).
+  - Verify battery voltage protection (`V_BAT < 11.8 V` blocks OTA/heavy operations; `> 15.5 V` triggers `BSP_LED_SOS`; Deep Sleep wakes on both CAN/K-Line edge and `VBAT_SENSE > 13.2 V` for quiet K-Line vehicles).
+- **Axis 2 — Correctness, Timing & Concurrency:**
+  - Check FreeRTOS multi-task thread safety across Dual-Core LX7 (mutex protection on `ecu_sim_state_t`, socket descriptors, and non-atomic 64-bit `int64_t` timestamps).
+  - Check that high-priority tasks (`prio >= 3`) never spin without yielding on driver error paths (preventing `5000 ms` TWDT panics) and respect K-Line timings (`P1`–`P4`, `25 ms` Fast-Init, `200 ms/bit` 5-baud).
+- **Axis 3 — Interfaces, Protocols & README Compliance:**
+  - Verify that `main/app_main.c` routes ELM327 requests to physical CAN (`twai_driver`/`isotp`) and K-Line (`kline_driver`/`kwp2000`) when `!CONFIG_OBD2_VIRTUAL_BENCH`.
+  - Verify that every `AT` command, CLI command, `LED1` pattern, and `transport_id_t` (`USB`, `BLE`, `WIFI`) documented in `README.md` is wired end-to-end (no state-only no-ops or dead functions).
+- **Axis 4 — Performance, Resources & Partitioning:**
+  - Verify zero dynamic allocation on hot packet paths (`transport_stream` static ring buffers, `isotp_link_t`), bounded stack usage, and valid dual-OTA partition tables (`partitions_ota.csv`) with rollback support.
+- **Axis 5 — Maintainability, Testing & CI:**
+  - Verify that `.github/workflows/ci.yml` executes `clang-format --dry-run --Werror`, `uvx ruff check tests/ scripts/`, `uv run pytest`, and builds both `sdkconfig.defaults` and `sdkconfig.virtual_bench`.
 
 ### 2.3 Known Design Decisions (Do Not Flag)
-- **[TODO: Validated Trade-offs]** *(Document intentional choices that might otherwise look like defects to a fresh reviewer.)*
+- **`CONFIG_OBD2_VIRTUAL_BENCH` Pin & Bus Isolation:** Disabling physical CAN/K-Line/ADC/LED GPIOs and routing `elm327_emu` to the in-memory `ecu_simulator` when `CONFIG_OBD2_VIRTUAL_BENCH=y` is intentional to avoid GPIO conflicts with the LilyGO T-Display S3 8-bit parallel ST7789 LCD.
+- **Pure-C Host Unit Testing via `ctypes`:** Compiling pure-C protocol components (`isotp`, `kline_proto`, `obd2_codec`, `kwp2000`, `elm327_emu`, `ecu_sim_core`) on the host via `gcc`/`ziglang` + `pytest` without ESP-IDF mocks is an intentional fast-feedback architecture.
 
 ---
 

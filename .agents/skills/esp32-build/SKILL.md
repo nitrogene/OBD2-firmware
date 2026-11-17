@@ -50,17 +50,24 @@ If no ESP-IDF `v5.2+` installation is found, **stop and ask the user** for their
 
 1. **Target configuration (only when unconfigured or switching target):**
    - Check `sdkconfig` (`CONFIG_IDF_TARGET="esp32s3"`). Run `idf.py set-target esp32s3` only if needed, as it triggers a full reconfigure.
-2. **Firmware build:**
+2. **Firmware build (verify both profiles when modifying shared components):**
    ```powershell
    idf.py build
+   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.virtual_bench" -B build_vbench build
    ```
-3. **Host Python tests (always via `uv`, never bare `python`):**
+3. **Host Python tests & linting (always via `uv`, never bare `python`):**
    ```powershell
    uv run pytest
+   uvx ruff check tests/ scripts/
    ```
-4. **Autonomy & verification gates:**
+4. **Autonomy & verification gates (`AGENTS.md` Section 4):**
    - Maximum **3 consecutive attempts** to fix a recurring build, CMake, or linker error; if still blocked, stop, summarize the root cause, and yield to the user.
-   - Never mark tasks as `[x]` in `todo.md` before `idf.py build` and relevant tests pass.
+   - Before marking any task `[x]` in `todo.md`, verify:
+     1. `main/app_main.c` does not leave `VIRTUAL_BENCH` simulator stubs unguarded on the Standard Hardware path.
+     2. All driver preconditions (`NULL`/length checks) and FreeRTOS error-path delays (`vTaskDelay` to prevent `TWDT` starvation) are respected.
+     3. Wireless/HTTP/BLE security gates and `obd2_is_service_allowed()` blocklists are enforced.
+     4. Shared cross-task state (`ecu_sim_state_t`, sockets, 64-bit timestamps) is mutex-protected.
+     5. Every `AT`/CLI command, `LED1` state, and wakeup source claimed in `README.md` is wired end-to-end (no state-only no-ops).
 
 ---
 
