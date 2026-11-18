@@ -16,6 +16,7 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
@@ -32,8 +33,10 @@ static const char *TAG = "comm_wifi";
 #define NVS_KEY_PASS "pass"
 #define NVS_KEY_STA_SSID "sta_ssid"
 #define NVS_KEY_STA_PASS "sta_pass"
+#define WIFI_AP_STARTED_BIT BIT0
 
 static SemaphoreHandle_t s_wifi_mutex = NULL;
+static EventGroupHandle_t s_wifi_events = NULL;
 static int s_client_sock = -1;
 static char s_ssid[33] = COMM_WIFI_DEFAULT_SSID;
 static char s_pass[65] = COMM_WIFI_DEFAULT_PASS;
@@ -454,8 +457,26 @@ static void comm_wifi_start_http_server(void) {
     ESP_LOGI(TAG, "Web config & OTA server listening on port 80");
 }
 
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
+                               void *event_data) {
+    (void)arg;
+    (void)event_data;
+    if (event_base == WIFI_EVENT && s_wifi_events != NULL) {
+        if (event_id == WIFI_EVENT_AP_START) {
+            xEventGroupSetBits(s_wifi_events, WIFI_AP_STARTED_BIT);
+        } else if (event_id == WIFI_EVENT_AP_STOP) {
+            xEventGroupClearBits(s_wifi_events, WIFI_AP_STARTED_BIT);
+        }
+    }
+}
+
 static void comm_wifi_tcp_task(void *arg) {
     (void)arg;
+
+    if (s_wifi_events != NULL) {
+        (void)xEventGroupWaitBits(s_wifi_events, WIFI_AP_STARTED_BIT, pdFALSE, pdTRUE,
+                                  pdMS_TO_TICKS(5000));
+    }
 
     int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if (listen_sock < 0) {
@@ -475,8 +496,17 @@ static void comm_wifi_tcp_task(void *arg) {
     addr.sin_addr.s_addr = inet_addr(COMM_WIFI_AP_IP);
     addr.sin_port = htons(COMM_WIFI_TCP_PORT);
 
-    if (bind(listen_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        ESP_LOGE(TAG, "bind() failed: errno=%d", errno);
+    bool bound = false;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        if (bind(listen_sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            bound = true;
+            break;
+        }
+        ESP_LOGW(TAG, "bind() attempt %d failed (errno=%d), retrying...", attempt + 1, errno);
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    if (!bound) {
+        ESP_LOGE(TAG, "bind() failed permanently: errno=%d", errno);
         close(listen_sock);
         vTaskDelete(NULL);
         return;
@@ -503,6 +533,14 @@ static void comm_wifi_tcp_task(void *arg) {
 
         int nodelay = 1;
         setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+        int keepalive = 1;
+        int keepidle = 5;
+        int keepintvl = 2;
+        int keepcnt = 3;
+        setsockopt(client, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+        setsockopt(client, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+        setsockopt(client, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+        setsockopt(client, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
 
         wifi_lock();
         s_client_sock = client;
@@ -538,6 +576,12 @@ esp_err_t comm_wifi_init(void) {
             return ESP_ERR_NO_MEM;
         }
     }
+    if (s_wifi_events == NULL) {
+        s_wifi_events = xEventGroupCreate();
+        if (s_wifi_events == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
 
     /* Confirm running OTA image is valid so bootloader does not roll back on next reset */
     (void)esp_ota_mark_app_valid_cancel_rollback();
@@ -560,6 +604,9 @@ esp_err_t comm_wifi_init(void) {
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         return err;
     }
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                                        &wifi_event_handler, NULL, NULL));
 
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
     if (ap_netif == NULL) {

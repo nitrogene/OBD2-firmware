@@ -23,3 +23,9 @@
 - [ ] **Secure Pairing UX (USB-C CDC CLI & `VIRTUAL_BENCH` ST7789 Display):** Avoid printing derived secrets in permanent boot logs; add an explicit USB-C CDC CLI command (e.g., `prov`) to display the default `ap_pass` and `AT+EXT` passkey on physical connection, and display the initial pairing code on the ST7789 screen (`components/virtual_bench_ui`) on first boot (blank NVS) or button press.
 - [ ] **Enforce BLE Link Encryption by Default (`components/comm_ble`):** Enable `s_require_enc = true` by default when bonding is active so unencrypted GATT writes are rejected (`BLE_ATT_ERR_INSUFFICIENT_ENC`).
 - [ ] **Provisioning Host & Hardware Tests:** Add `pytest` host unit tests for deterministic derivation, domain separation (`ap_pass` != `ext_passkey`), WPA2 length (`>= 8`), and unambiguous alphabet; verify on two physical ESP32-S3 boards that secrets differ per chip and survive `AT+FACTORY`.
+
+---
+
+## Firmware Versioning & Diagnostics
+
+- [ ] **Embed & Expose Git Tag / Commit Hash (`PROJECT_VER` / `esp_app_get_description()`):** Ensure the Git tag and commit hash (`git describe --tags --always --dirty`, already embedded in `esp_app_desc_t.version` by ESP-IDF) are reliably populated at build time (including CI/release builds) and exposed for runtime retrieval via USB-C CLI (`info`), ELM327 (`AT+VER` or `AT@2`), HTTP (`GET /`), and `VIRTUAL_BENCH` UI.
