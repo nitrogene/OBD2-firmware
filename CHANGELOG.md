@@ -5,6 +5,30 @@ All notable changes to `OBD2-firmware` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-18
+
+### Fixed
+- **Physical Bus Routing (`main/app_main.c`)**: Guarded the in-memory `ecu_sim_handle_request()` shortcut behind `#ifdef CONFIG_OBD2_VIRTUAL_BENCH` so Standard Hardware builds route ELM327 requests over physical CAN (`twai_driver` / `isotp`) and K-Line (`kline_driver` / `kwp2000`) via `obd2_autodetect_run()`.
+- **K-Line ECU Simulator & Driver (`kline_driver`, `ecu_simulator`)**: Split `kline_drv_send_recv()` into dedicated `kline_drv_send()` and `kline_drv_recv()` primitives (eliminating `NULL` argument errors and TWDT starvation), and added 5-baud/Fast-Init wakeup plus ISO 9141-2/KWP2000 responder framing.
+- **Wi-Fi, HTTP & OTA Hardening (`comm_wifi`, `sdkconfig.*`)**: Added constant-time authentication on `POST /config`, `/ota`, and `/factory-reset`, removed plaintext passwords from `GET /`, added HTML escaping against Stored XSS, blocked `/ota` when `V_BAT < 11.8 V`, bound TCP `:35000` exclusively to `192.168.0.10`, removed `WIFI_AUTH_OPEN` fallback, enabled `partitions_ota.csv` + app rollback in both build profiles, and heap-allocated the `GET /` HTML buffer (`3072 B`).
+- **BLE & Diagnostic Security Gating (`comm_ble`, `elm327_emu`, `obd2_stack`, `kwp2000`)**: Enforced encrypted GATT writes when required, added `AT+EXT` passkey / `AT+FACTORY` confirmation, and blocked state-modifying SIDs (`0x11`, `0x28`, `0x2E`, `0x2F`, `0x30`, `0x3B`, `0x3D`, `0x85`) when `extended_unlocked == false`.
+- **Concurrency, Power Management & Runtime Hooks**: Protected `s_sim`, `s_client_sock`, and 64-bit `s_last_activity_us` with FreeRTOS mutexes; wired `power_mgmt_notify_activity()` on wireless/OTA traffic, `twai_drv_check_and_recover()` + `LED1` state patterns, periodic Deep Sleep `VBAT_SENSE > 13.2 V` wake-up, `TRANSPORT_ID_USB` passthrough, and active `AT+SNIFF`/`ATMA`/CAN filter handling.
+- **CLI & Codec Validation**: Fixed `PID 0x42` scaling/docstring in `obd2_codec` and added `strtol`/`strtoul` `endptr` validation in `main/cli_commands.c`.
+
+### Added
+- **Host Unit & Fuzzing Tests**: Added `tests/test_autodetect.py`, 4-byte KWP framing tests, ELM327 parser fuzzing, and ECU simulator DTC/PID boundary tests (`30` tests total).
+- **CI & Code Formatting**: Added `.clang-format` and updated `.github/workflows/ci.yml` to run `clang-format --dry-run --Werror`, `uvx ruff check tests/ scripts/`, and build both `sdkconfig.defaults` and `sdkconfig.virtual_bench`.
+
+### Changed
+- **Documentation Standardization**: Enforced English-only documentation in `AGENTS.md` (Section 7) and translated `bringup.md` and `todo.md` completely into English.
+
+## [0.4.0] - 2026-11-17
+
+### Added
+- **Dual-OTA Partition Table & T-Display S3 Scenarios (`partitions_ota.csv`, `virtual_bench_ui`)**: Added dual-OTA partition layout, T-Display S3 physical button scenarios, bench-safe `power_mgmt`, and PID benchmarks.
+- **Phase 6 Validation Harnesses**: Added `bleak` BLE black-box test, BLE/Wi-Fi arbitration, HTTP/OTA validator, and Car Scanner sequence tests.
+- **CI/Test Discovery**: Restricted `pytest` discovery to `tests/` via `pyproject.toml` and expanded `README.md` documentation.
+
 ## [0.3.0] - 2026-11-16
 
 ### Added

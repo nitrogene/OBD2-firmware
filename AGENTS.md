@@ -61,6 +61,7 @@ Before marking any task as `[x]` in `todo.md` or claiming a feature in `README.m
 ## 6. Post-Validation & Commit Policy
 - Commit and push **only** after explicit textual approval from the user on the commit message (or when explicitly asked by the user to open a Pull Request on a feature branch).
 
-## 7. Typography & Formulas
+## 7. Documentation Language, Typography & Formulas
+- **English-Only Documentation:** All project documentation (`README.md`, `todo.md`, `CHANGELOG.md`, `bringup.md`, `AGENTS.md`, `review/`, `.github/`, `.agents/skills/`, as well as code comments and docstrings) must be written exclusively in English.
 - **No LaTeX for pins, components, or simple values:** Use plain text with Markdown inline code: `IO1`, `LED1`, `100 kΩ`, `3.3V`, `500 kbps`.
 - Dollar markup `$ ... $` is reserved strictly for complex mathematical equations.
