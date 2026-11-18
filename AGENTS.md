@@ -65,3 +65,14 @@ Before marking any task as `[x]` in `todo.md` or claiming a feature in `README.m
 - **English-Only Documentation:** All project documentation (`README.md`, `todo.md`, `CHANGELOG.md`, `bringup.md`, `AGENTS.md`, `review/`, `.github/`, `.agents/skills/`, as well as code comments and docstrings) must be written exclusively in English.
 - **No LaTeX for pins, components, or simple values:** Use plain text with Markdown inline code: `IO1`, `LED1`, `100 kΩ`, `3.3V`, `500 kbps`.
 - Dollar markup `$ ... $` is reserved strictly for complex mathematical equations.
+
+## 8. Documentation Governance (`README.md` vs `todo.md` vs `CHANGELOG.md`)
+Each root documentation file has a single, non-overlapping role:
+- **`README.md` (Current Functional Contract):** High-level description of what the firmware **currently does** (architecture, hardware/pinout contract, safety/security guarantees, user-facing interfaces, CLI/`AT` commands, build & test workflows). Must stay free of implementation minutiae (no internal variable names, mutex details, or patch-level explanations) and must never claim unimplemented or unverified behavior.
+- **`todo.md` (Active Backlog Only):** Open action items (`- [ ]`) and pending hardware/bench validations. Completed items (`- [x]`) should be pruned regularly once reflected in `CHANGELOG.md` (and `README.md` if applicable) so `todo.md` remains a concise list of remaining work.
+- **`CHANGELOG.md` (Historical Record):** Versioned log of all notable changes (new features, bug fixes, security patches, refactors, CI updates) following Keep a Changelog / SemVer.
+
+### Routing Rule When Completing a `todo.md` Item
+Completing a task in `todo.md` updates `CHANGELOG.md` (when user-visible or release-relevant), and updates `README.md` **only if** the change alters the external contract:
+- **Update `README.md`** when adding, changing, or removing a user-facing feature, `AT`/CLI command, protocol, security/gating policy, GPIO/hardware spec, build profile, or test workflow.
+- **Do NOT update `README.md`** for internal bug fixes, thread-safety/mutex fixes, compiler/lint fixes, internal refactors, or hardware validation of an already-documented feature (record these in `CHANGELOG.md` only, and remove/prune the completed item from `todo.md`).

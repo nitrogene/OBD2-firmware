@@ -83,7 +83,7 @@ Attenuation ratio of `R12` (`100 kΩ`) and `R13` (`12 kΩ`):
 
 ### Low-Power Sleep Notes
 - Always-on `U2`, `U3`, `U4`, and `U5` draw ~8–15 mA total when 12V is connected and ESP32-S3 is in Deep Sleep (`< 20 µA`).
-- Configure wake-up via GPIO edge (`ext0`/`ext1`) on CAN/K-Line activity or ULP comparator on `VBAT_SENSE > 13.2 V`.
+- Wake-up is configured via GPIO edge (`ext1` on `IO4` `KLINE_RX` / `IO16` `TWAI_RX` LOW) and periodic RTC timer wake-up to sample `VBAT_SENSE > 13.2 V` (alternator crank detection on K-Line vehicles).
 
 ---
 
@@ -125,8 +125,8 @@ Two build configurations share the same codebase:
 
 | Profile | Target Hardware | Command | Key Behavior |
 | :--- | :--- | :--- | :--- |
-| **Standard Hardware** | Custom `ESP32-S3-WROOM-1` OBD2 PCB | `idf.py set-target esp32s3 && idf.py build` | Full physical CAN (`IO15`/`IO16`), K-Line (`IO4`/`IO5`), `VBAT_SENSE` (`IO1`), `LED1` (`IO2`), and 10-min Deep Sleep governance. |
-| **Virtual Bench (`CONFIG_OBD2_VIRTUAL_BENCH`)** | **LilyGO TTGO T-Display S3** (`170×320` ST7789) | `idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.virtual_bench" -B build_vbench build` | Disables conflicting physical CAN/K-Line/ADC/LED GPIOs & auto-sleep, drives the ST7789 TFT status UI + `GPIO 0`/`GPIO 14` buttons, simulates `V_BAT` (`12.6V` default), and enables dual-OTA (`partitions_ota.csv`, 2 MB `ota_0`/`ota_1`). |
+| **Standard Hardware** | Custom `ESP32-S3-WROOM-1` OBD2 PCB | `idf.py set-target esp32s3 && idf.py build` | Full physical CAN (`IO15`/`IO16`), K-Line (`IO4`/`IO5`), `VBAT_SENSE` (`IO1`), `LED1` (`IO2`), dual-OTA (`partitions_ota.csv` + rollback), and 10-min Deep Sleep governance. |
+| **Virtual Bench (`CONFIG_OBD2_VIRTUAL_BENCH`)** | **LilyGO TTGO T-Display S3** (`170×320` ST7789) | `idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.virtual_bench" -B build_vbench build` | Disables conflicting physical CAN/K-Line/ADC/LED GPIOs & auto-sleep, drives the ST7789 TFT status UI + `GPIO 0`/`GPIO 14` buttons, simulates `V_BAT` (`12.6V` default), and enables dual-OTA (`partitions_ota.csv` + rollback). |
 
 ### 6.2 Status LED `LED1` State Machine (`IO2`)
 | Pattern | Timing | System State |
@@ -148,25 +148,26 @@ Incoming byte streams from BLE and Wi-Fi pass through `components/transport_stre
   - Supports secure bonding and ATT MTU negotiation.
   - Measured black-box throughput on T-Display S3: **~8.1 req/s** (`200` PIDs in `24.66 s`).
 - **Wi-Fi SoftAP / AP+STA, TCP Server & Web/OTA (`components/comm_wifi`):**
-  - Default SoftAP SSID `OBD2-Scanner` (password `12345678`, static IP **`192.168.0.10/24`**), optional `AP+STA` mode persisted in NVS.
-  - ELM327 TCP Server on **port `35000`** (`TCP_NODELAY` enabled).
+  - Default SoftAP SSID `OBD2-Scanner` (WPA2-PSK, default password `12345678`, static IP **`192.168.0.10/24`**), optional `AP+STA` mode persisted in NVS.
+  - ELM327 TCP Server bound to `192.168.0.10` on **port `35000`** (`TCP_NODELAY` enabled).
   - Measured black-box throughput on T-Display S3: **~136.9 req/s** (`200` PIDs in `1.46 s`).
   - Embedded HTTP Server on **port `80`** (`http://192.168.0.10/`):
-    - `GET /` & `POST /config`: configure SoftAP/STA SSID & password and BLE device name in NVS.
-    - `POST /ota`: wireless `.bin` firmware upload (`esp_ota_ops`, verified with `1.18 MB` `VIRTUAL_BENCH` image on `partitions_ota.csv`).
-    - `POST /factory-reset`: erases NVS and reboots.
+    - `GET /`: configuration UI (HTML-escaped SSIDs, no plaintext password disclosure).
+    - `POST /config`: authenticated update of SoftAP/STA SSID & password and BLE device name in NVS.
+    - `POST /ota`: authenticated wireless `.bin` firmware upload (`esp_ota_ops`, rejects flashing when `V_BAT < 11.8 V` or `> 15.5 V`; verified with `1.18 MB` `VIRTUAL_BENCH` image on `partitions_ota.csv`).
+    - `POST /factory-reset`: authenticated NVS erase and reboot.
 
 ### 6.4 ELM327 v1.5 Emulator & Extended UDS/SLCAN Mode (`components/elm327_emu`)
 - **Standard ELM327 v1.5 AT Commands:** `ATZ`, `ATI`, `AT@1`, `ATWS`, `ATD`, `ATPC`, `ATE0`/`1`, `ATL0`/`1`, `ATS0`/`1`, `ATH0`/`1`, `ATRV` (via `power_mgmt`), `ATSP0..9`, `ATDP`, `ATDPN`, `ATAT0..2`, `ATST`, `ATSH`, `ATCRA`, `ATCF`, `ATCM`, `ATCAF0`/`1`, `ATFCSH`, `ATFCSD`, `ATFCSM`, `ATMA`, `ATSI`, `ATFI`, bare `\r` command repeat, and ISO-TP `0:`/`1:` multi-line formatting.
-- **Extended Custom Mode (`AT+EXT=1` / `AT+EXT=0`):**
-  - Unlocks UDS services in `ecu_simulator` / `obd2_stack`: `0x10` (DiagnosticSessionControl), `0x22` (ReadDataByIdentifier: `0xF190` VIN, `0xF187` Part Number, `0x010C` RPM, `0x010D` Speed), `0x2E` (WriteDataByIdentifier `0xF190` VIN), `0x19` (ReadDTCInformation `0x01`/`0x02`), and `0x14` (ClearDiagnosticInformation).
-  - Extended AT commands: `AT+SNIFF=1/0`, `AT+STATS` (`RX`/`TX`/`ERR` counters), `AT+FACTORY` (NVS erase & reboot), plus `elm327_format_slcan_frame()` (`t<III><L><DATA>\r` / `T<IIIIIIII><L><DATA>\r`).
+- **Extended Custom Mode (`AT+EXT=1[,<passkey>]` / `AT+EXT=0`):**
+  - Unlocks state-modifying/UDS/KWP2000 services (`0x11`, `0x27`, `0x28`, `0x2E`, `0x2F`, `0x30`, `0x31`, `0x34`–`0x37`, `0x3B`, `0x3D`, `0x85`, plus UDS `0x10`/`0x22`/`0x19`/`0x14` in `ecu_simulator`).
+  - Extended AT commands: `AT+SNIFF=1/0`, `AT+STATS` (`RX`/`TX`/`ERR` counters), `AT+SIM:<KEY>=<VAL>` (wireless simulator control), `AT+FACTORY` (confirmed NVS erase & reboot), plus `elm327_format_slcan_frame()` (`t<III><L><DATA>\r` / `T<IIIIIIII><L><DATA>\r`).
 
 ### 6.5 ECU Simulator & USB-C CLI (`components/ecu_simulator`, `main/cli_commands.c`)
 - **In-Memory OBD/UDS Engine (`ecu_sim_core.c`):** Responds to Modes `01` (PIDs `00`, `04`, `05`, `0C`, `0D`, `0F`, `11`, `42`), `02`, `03`, `04`, `09` (`02` VIN), and UDS `0x10`/`0x22`/`0x2E`/`0x19`/`0x14` with DTC injection/clearing.
 - **Physical Bus Responder (`MODE_ECU_SIMULATOR`):** `ecu_simulator_start_bus(can, kline)` broadcasts cyclic CAN frames (`0x280`, `0x316`) + `0x7E8` ISO-TP responses on TWAI, and answers KWP2000/ISO-9141 frames on K-Line (disabled in `CONFIG_OBD2_VIRTUAL_BENCH`).
 - **USB-C CDC Console (`obd2>` prompt, 115200):**
-  - Hardware/Diagnostics: `info`, `led <off|breath|blink|solid|burst|sos|duty <0-100>>`, `vbat`, `power [sleep|selftest]`, `can <ping|pong|rx>`, `kline <echo|pulse>`, `proto` (`ATSP0` auto-detect).
+  - Hardware/Diagnostics: `info`, `led <off|breath|blink|solid|burst|sos|duty <0-100>>`, `vbat`, `power [sleep|selftest]`, `can <ping|pong|rx>`, `kline <echo|pulse>`, `proto` (`ATSP0` auto-detect), `at <CMD>` (ELM327 passthrough over `TRANSPORT_ID_USB`).
   - Simulator Control: `sim status`, `sim rpm <0-16383>`, `sim speed <0-255>`, `sim coolant <-40..215>`, `sim dtc <P0100>`, `sim clear`, `sim vbat <0-24000>`, `sim start [can|kline|both]`, `sim stop`.
 
 ### 6.6 LilyGO TTGO T-Display S3 Virtual Bench UI (`components/virtual_bench_ui`)
