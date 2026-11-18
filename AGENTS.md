@@ -52,7 +52,7 @@ Before marking any task as `[x]` in `todo.md` or claiming a feature in `README.m
 - **CLI Input Validation & Help Parity:** Validate numeric CLI arguments using `strtol`/`strtoul` `endptr` checks (rejecting non-numeric strings), and keep CLI `help`/usage strings synchronized with `README.md`.
 
 ### 4.6 CI & Static Verification Gate
-- **CI Must Execute Every Claimed Check:** `.github/workflows/ci.yml` must execute `clang-format --dry-run --Werror` on all `.c`/`.h` files under `main/` and `components/`, run `uvx ruff check tests/ scripts/`, run `uv run pytest`, and compile both `sdkconfig.defaults` (Standard Hardware) and `sdkconfig.virtual_bench` (`VIRTUAL_BENCH`).
+- **CI Must Execute Every Claimed Check:** `.github/workflows/ci.yml` must execute `clang-format --dry-run --Werror` on all `.c`/`.h` files under `main/` and `components/`, run `uvx ruff check tests/ scripts/`, run `uv run pytest`, and compile both `sdkconfig.defaults` (Standard Hardware) and `sdkconfig.virtual_bench` (`VIRTUAL_BENCH`). Run `uvx clang-format --dry-run --Werror` and `uvx ruff check` locally before committing C/H or Python changes.
 - **Autonomy Limits:** Maximum 3 consecutive attempts to fix a recurring build, linker, or protocol failure. If blocked, stop, summarize the root cause, and yield control to the user.
 
 ## 5. Technical Review Gateway (`review/`)

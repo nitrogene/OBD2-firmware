@@ -98,7 +98,7 @@ static int handle_mode01_or_02(const ecu_sim_state_t *sim, uint8_t mode, uint8_t
         out_resp[2] = (uint8_t)((sim->throttle_pct * 255U) / 100U);
         *out_len = 3U;
         return 0;
-    case 0x20U:              /* Supported PIDs 21..40 */
+    case 0x20U: /* Supported PIDs 21..40 */
         out_resp[2] = 0x00U;
         out_resp[3] = 0x00U;
         out_resp[4] = 0x00U;
