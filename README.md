@@ -148,10 +148,10 @@ Incoming byte streams from BLE and Wi-Fi pass through `components/transport_stre
   - Supports secure bonding and ATT MTU negotiation.
   - Measured black-box throughput on T-Display S3: **~8.1 req/s** (`200` PIDs in `24.66 s`).
 - **Wi-Fi SoftAP / AP+STA, TCP Server & Web/OTA (`components/comm_wifi`):**
-  - Default SoftAP SSID `OBD2-Scanner` (WPA2-PSK, default password `12345678`, static IP **`192.168.0.10/24`**), optional `AP+STA` mode persisted in NVS.
-  - ELM327 TCP Server bound to `192.168.0.10` on **port `35000`** (`TCP_NODELAY` enabled).
+  - Default SoftAP SSID `OBD2-Scanner` (WPA2-PSK, default password `12345678`, static IP **`192.168.42.1/24`**), optional `AP+STA` mode persisted in NVS.
+  - ELM327 TCP Server bound to `192.168.42.1` on **port `35000`** (`TCP_NODELAY` enabled).
   - Measured black-box throughput on T-Display S3: **~136.9 req/s** (`200` PIDs in `1.46 s`).
-  - Embedded HTTP Server on **port `80`** (`http://192.168.0.10/`):
+  - Embedded HTTP Server on **port `80`** (`http://192.168.42.1/`):
     - `GET /`: configuration UI (HTML-escaped SSIDs, no plaintext password disclosure).
     - `POST /config`: authenticated update of SoftAP/STA SSID & password and BLE device name in NVS.
     - `POST /ota`: authenticated wireless `.bin` firmware upload (`esp_ota_ops`, rejects flashing when `V_BAT < 11.8 V` or `> 15.5 V`; verified with `1.18 MB` `VIRTUAL_BENCH` image on `partitions_ota.csv`).
@@ -224,7 +224,7 @@ Active only when `CONFIG_OBD2_VIRTUAL_BENCH=y`:
   │   ├── test_phase4_protocols.py
   │   └── test_phase5_elm327_ecusim.py
   ├── scripts/                  # Black-box LilyGO bench & logic analyzer scripts
-  │   ├── vbench_blackbox_test.py    # Wi-Fi TCP 192.168.0.10:35000 suite + 200-PID benchmark
+  │   ├── vbench_blackbox_test.py    # Wi-Fi TCP 192.168.42.1:35000 suite + 200-PID benchmark
   │   ├── vbench_ble_test.py         # BLE GATT FFF0/FFE0 suite + 200-PID benchmark (bleak)
   │   ├── vbench_arbitration_test.py # Simultaneous BLE + Wi-Fi transport lock test
   │   └── vbench_http_test.py        # Web Config GET / + wireless POST /ota uploader
@@ -254,7 +254,7 @@ Active only when `CONFIG_OBD2_VIRTUAL_BENCH=y`:
   ```
 - **LilyGO Black-Box Wireless Validation (`VIRTUAL_BENCH`):**
   - BLE (`OBD2-ELM327`, no Wi-Fi switch needed): `uvx --with bleak python scripts/vbench_ble_test.py`
-  - Wi-Fi (`OBD2-Scanner` / `192.168.0.10:35000`): `uv run python scripts/vbench_blackbox_test.py`
+  - Wi-Fi (`OBD2-Scanner` / `192.168.42.1:35000`): `uv run python scripts/vbench_blackbox_test.py`
   - Multi-transport lock arbitration: `uvx --with bleak python scripts/vbench_arbitration_test.py`
   - Web Config & wireless OTA: `uv run python scripts/vbench_http_test.py --ota build_vbench/obd2_firmware.bin`
 - **Hardware Bring-Up Checklist:** see [`bringup.md`](bringup.md).

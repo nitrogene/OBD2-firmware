@@ -34,7 +34,7 @@ def upload_ota(base_url: str, bin_path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="OBD2 Web Config & OTA validator")
-    parser.add_argument("--url", default="http://192.168.0.10", help="Base URL (default: http://192.168.0.10)")
+    parser.add_argument("--url", default="http://192.168.42.1", help="Base URL (default: http://192.168.42.1)")
     parser.add_argument("--ota", type=Path, default=None, help="Optional .bin file to flash over OTA")
     args = parser.parse_args()
 

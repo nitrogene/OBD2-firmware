@@ -40,8 +40,34 @@ static void elm_factory_reset_cb(void *ctx) {
     esp_restart();
 }
 
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+static void vbench_log_wire(const char *dir, const uint8_t *data, size_t len) {
+    char esc[192];
+    size_t pos = 0U;
+    for (size_t i = 0U; i < len && pos + 3U < sizeof(esc); ++i) {
+        uint8_t c = data[i];
+        if (c == '\r') {
+            esc[pos++] = '\\';
+            esc[pos++] = 'r';
+        } else if (c == '\n') {
+            esc[pos++] = '\\';
+            esc[pos++] = 'n';
+        } else if (c >= 0x20U && c <= 0x7EU) {
+            esc[pos++] = (char)c;
+        } else {
+            esc[pos++] = '.';
+        }
+    }
+    esc[pos] = '\0';
+    ESP_LOGI(TAG, "ELM %s (%uB): %s", dir, (unsigned)len, esc);
+}
+#endif
+
 static void elm_write_bytes_cb(const uint8_t *data, size_t len, void *ctx) {
     (void)ctx;
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+    vbench_log_wire("TX", data, len);
+#endif
     (void)transport_stream_write(data, len);
 }
 
@@ -425,6 +451,9 @@ static void elm327_host_task(void *arg) {
     for (;;) {
         size_t n = transport_stream_read(rx_buf, sizeof(rx_buf), 50U);
         if (n > 0U) {
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+            vbench_log_wire("RX", rx_buf, n);
+#endif
             power_mgmt_notify_activity();
             elm327_feed_bytes(&s_elm_ctx, rx_buf, n);
             if (s_elm_ctx.last_cmd[0] != '\0') {

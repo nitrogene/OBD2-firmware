@@ -38,7 +38,7 @@ Before marking any task as `[x]` in `todo.md` or claiming a feature in `README.m
   - Require authentication on state-mutating HTTP endpoints (`POST /config`, `POST /ota`, `POST /factory-reset`).
   - In `POST /ota`, query `power_mgmt_get_status()` and reject flashing when `V_BAT < 11.8 V` (`POWER_STATE_UNDERVOLTAGE_CRITICAL`) or `> 15.5 V` (`POWER_STATE_OVERVOLTAGE`).
   - Ensure both build profiles include an OTA-capable partition table (`partitions_ota.csv`) and `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` if wireless OTA is enabled.
-  - Never silently fall back to `WIFI_AUTH_OPEN` on SoftAP, and bind diagnostic TCP sockets (`:35000`) to the SoftAP interface (`192.168.0.10`) unless STA access is explicitly authorized.
+  - Never silently fall back to `WIFI_AUTH_OPEN` on SoftAP, and bind diagnostic TCP sockets (`:35000`) to the SoftAP interface (`192.168.42.1`) unless STA access is explicitly authorized.
 - **BLE & Diagnostic Service Gating (`comm_ble`, `elm327_emu`, `obd2_stack`, `kwp2000`):**
   - Enforce link encryption (`BLE_GATT_CHR_F_WRITE_ENC`) when secure bonding is enabled.
   - Require a passkey/secret or physical confirmation before unlocking `AT+EXT` or executing `AT+FACTORY`.
@@ -76,3 +76,9 @@ Each root documentation file has a single, non-overlapping role:
 Completing a task in `todo.md` updates `CHANGELOG.md` (when user-visible or release-relevant), and updates `README.md` **only if** the change alters the external contract:
 - **Update `README.md`** when adding, changing, or removing a user-facing feature, `AT`/CLI command, protocol, security/gating policy, GPIO/hardware spec, build profile, or test workflow.
 - **Do NOT update `README.md`** for internal bug fixes, thread-safety/mutex fixes, compiler/lint fixes, internal refactors, or hardware validation of an already-documented feature (record these in `CHANGELOG.md` only, and remove/prune the completed item from `todo.md`).
+
+## 9. Dev-PC Hardware-In-the-Loop (`tests_hil/`) Regression Gate
+- **CI Isolation:** `tests_hil/` is strictly for local developer benches with a physical target attached (LilyGO T-Display S3 `VIRTUAL_BENCH`). GitHub Actions CI must only run hardware-free `tests/` (`uv run pytest`).
+- **When to Run `tests_hil/`:** Run `tests_hil/` **only on demand** or **when changes may impact** `comm_ble`, `comm_wifi`, `transport_stream`, `elm327_emu`, `ecu_simulator`, `virtual_bench_ui`, `main/app_main.c`, `main/cli_commands.c`, or as a pre-release gate before tagging `v*`.
+- **When to Skip:** Do **not** run `tests_hil/` for documentation-only (`.md`), CI (`.github/`), host-test (`tests/`), or isolated physical-bus-only driver (`twai_driver`, `kline_driver`, `kwp2000`) changes.
+- **No Hardware Connected:** If no LilyGO is attached on USB/BLE, report `tests_hil/` as skipped/not run (never block or fabricate results).

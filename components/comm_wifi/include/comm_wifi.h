@@ -14,15 +14,15 @@ extern "C" {
 /** @brief Default SoftAP password (open if empty, or >= 8 chars for WPA2). */
 #define COMM_WIFI_DEFAULT_PASS "12345678"
 /** @brief Default SoftAP static IPv4 address. */
-#define COMM_WIFI_AP_IP "192.168.0.10"
+#define COMM_WIFI_AP_IP "192.168.42.1"
 /** @brief ELM327 Wi-Fi standard TCP port. */
 #define COMM_WIFI_TCP_PORT 35000
 
 /**
- * @brief Initialize Wi-Fi SoftAP (192.168.0.10) and ELM327 TCP server (port 35000).
+ * @brief Initialize Wi-Fi SoftAP (192.168.42.1) and ELM327 TCP server (port 35000).
  *
  * Loads SSID/password from NVS ("comm_wifi" / "ssid", "pass"), configures
- * SoftAP static IP 192.168.0.10/24, registers TRANSPORT_ID_WIFI TX callback
+ * SoftAP static IP 192.168.42.1/24, registers TRANSPORT_ID_WIFI TX callback
  * on transport_stream, and starts the TCP listener task.
  *
  * @return ESP_OK on success, or an ESP_ERR_* code on failure.

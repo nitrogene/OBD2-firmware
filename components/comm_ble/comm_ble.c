@@ -193,12 +193,20 @@ static void comm_ble_advertise(void) {
     local_name[sizeof(local_name) - 1U] = '\0';
     ble_unlock();
 
+    static const ble_uuid16_t s_adv_uuids[] = {
+        BLE_UUID16_INIT(0xFFF0),
+        BLE_UUID16_INIT(0xFFE0),
+    };
+
     struct ble_hs_adv_fields fields;
     memset(&fields, 0, sizeof(fields));
 
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.tx_pwr_lvl_is_present = 1;
     fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+    fields.uuids16 = s_adv_uuids;
+    fields.num_uuids16 = 2;
+    fields.uuids16_is_complete = 0;
     fields.name = (uint8_t *)local_name;
     fields.name_len = (uint8_t)strlen(local_name);
     fields.name_is_complete = 1;

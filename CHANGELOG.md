@@ -5,6 +5,15 @@ All notable changes to `OBD2-firmware` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-18
+
+### Fixed
+- **Car Scanner BLE Compatibility (`comm_ble`, `elm327_emu`, `ecu_simulator`)**: Advertised `0xFFF0`/`0xFFE0` 16-bit service UUIDs in BLE advertising packets, added `ATAL`, `ATD0`/`ATD1`, and `ATM0`/`ATM1` commands, fixed `ATH1` CAN single-frame PCI length byte + `ATS0` header spacing, and implemented `0120`/`0140` supported-PID bitmasks.
+- **SoftAP Subnet Conflict (`comm_wifi`)**: Moved SoftAP static IP from `192.168.0.10` to `192.168.42.1/24` (`COMM_WIFI_AP_IP`) to avoid conflicts with `192.168.0.x` home/router networks.
+
+### Added
+- **Dev-PC Hardware-In-the-Loop Suite (`tests_hil/`)**: Added `tests_hil/test_hil_vbench.py` (USB-C CDC CLI, BLE advertising + Car Scanner sequence, and conditional Wi-Fi TCP/HTTP checks) and documented the `tests_hil/` regression gate in `AGENTS.md` (Section 9) plus `VIRTUAL_BENCH` ELM RX/TX wire logs in `main/app_main.c`.
+
 ## [0.4.1] - 2026-11-18
 
 ### Fixed

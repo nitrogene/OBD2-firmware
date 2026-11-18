@@ -93,7 +93,7 @@ async def run_arbitration(ble_name: str, wifi_host: str, wifi_port: int) -> None
 def main() -> int:
     parser = argparse.ArgumentParser(description="OBD2 multi-transport arbitration test")
     parser.add_argument("--ble-name", default="OBD2-ELM327")
-    parser.add_argument("--host", default="192.168.0.10")
+    parser.add_argument("--host", default="192.168.42.1")
     parser.add_argument("--port", type=int, default=35000)
     args = parser.parse_args()
     asyncio.run(run_arbitration(args.ble_name, args.host, args.port))

@@ -234,10 +234,10 @@ def test_elm327_obd_mode01_and_headers(phase5_lib: ctypes.CDLL) -> None:
     # Repeat last command with bare CR
     assert h.cmd("\r") == "41 05 82\r\r>"
 
-    # Disable spaces, enable headers
+    # Disable spaces, enable headers (CAN single-frame includes PCI length byte)
     assert h.cmd("ATS0\r") == "OK\r\r>"
     assert h.cmd("ATH1\r") == "OK\r\r>"
-    assert h.cmd("010C\r") == "7E8 410C1770\r\r>"
+    assert h.cmd("010C\r") == "7E804410C1770\r\r>"
 
     # Unsupported PID -> NO DATA
     assert h.cmd("0199\r") == "NO DATA\r\r>"
@@ -400,17 +400,17 @@ def test_car_scanner_and_python_obd_init_sequence(phase5_lib: ctypes.CDLL) -> No
     assert h.cmd("ATH1\r") == "OK\r\r>"
     assert h.cmd("ATSP0\r") == "OK\r\r>"
 
-    # Supported PIDs 01..20 (advertises 04, 05, 0C, 0D, 0F, 11)
-    assert h.cmd("0100\r") == "7E8 4100181A8001\r\r>"
+    # Supported PIDs 01..20 (advertises 04, 05, 0C, 0D, 0F, 11, 20)
+    assert h.cmd("0100\r") == "7E8064100181A8001\r\r>"
     # Poll every advertised PID with headers on, spaces off
-    assert h.cmd("0104\r").startswith("7E8 4104")
-    assert h.cmd("0105\r") == "7E8 41057D\r\r>"
-    assert h.cmd("010C\r") == "7E8 410C1C20\r\r>"
-    assert h.cmd("010D\r") == "7E8 410D37\r\r>"
-    assert h.cmd("010F\r") == "7E8 410F7D\r\r>"
-    assert h.cmd("0111\r").startswith("7E8 4111")
+    assert h.cmd("0104\r").startswith("7E8034104")
+    assert h.cmd("0105\r") == "7E80341057D\r\r>"
+    assert h.cmd("010C\r") == "7E804410C1C20\r\r>"
+    assert h.cmd("010D\r") == "7E803410D37\r\r>"
+    assert h.cmd("010F\r") == "7E803410F7D\r\r>"
+    assert h.cmd("0111\r").startswith("7E8034111")
     assert h.cmd("ATRV\r") == "12.6V\r\r>"
-    assert h.cmd("03\r") == "7E8 4300\r\r>"
+    assert h.cmd("03\r") == "7E8024300\r\r>"
 
 
 def test_elm327_parser_fuzzing_and_line_overflow(phase5_lib: ctypes.CDLL) -> None:

@@ -1,4 +1,4 @@
-"""Black-box Wi-Fi TCP (192.168.0.10:35000) validation script for LilyGO VIRTUAL_BENCH."""
+"""Black-box Wi-Fi TCP (192.168.42.1:35000) validation script for LilyGO VIRTUAL_BENCH."""
 
 import argparse
 import socket
@@ -67,7 +67,7 @@ def run_suite(host: str, port: int, stress_cycles: int, bench_count: int) -> Non
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="OBD2 VIRTUAL_BENCH Wi-Fi black-box validator")
-    parser.add_argument("--host", default="192.168.0.10", help="Target IP (default: 192.168.0.10)")
+    parser.add_argument("--host", default="192.168.42.1", help="Target IP (default: 192.168.42.1)")
     parser.add_argument("--port", type=int, default=35000, help="ELM327 TCP port (default: 35000)")
     parser.add_argument("--cycles", type=int, default=5, help="Reconnect stress cycles (default: 5)")
     parser.add_argument("--bench", type=int, default=200, help="Benchmark PID count (0=skip)")

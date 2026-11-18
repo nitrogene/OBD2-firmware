@@ -270,7 +270,8 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper) {
         emit_reply(ctx, "OK");
         return true;
     }
-    if (strcmp(upper, "ATPC") == 0) {
+    if (strcmp(upper, "ATPC") == 0 || strcmp(upper, "ATAL") == 0 || strcmp(upper, "ATD0") == 0 ||
+        strcmp(upper, "ATD1") == 0 || strcmp(upper, "ATM0") == 0 || strcmp(upper, "ATM1") == 0) {
         emit_reply(ctx, "OK");
         return true;
     }
@@ -477,9 +478,20 @@ static void emit_obd_response(const elm327_ctx_t *ctx, uint32_t rx_id, const uin
     char line[96];
     if (resp_len <= 7U) {
         if (ctx->headers) {
-            char hdr[16];
-            snprintf(hdr, sizeof(hdr), (rx_id > 0x7FFU) ? "%08lX " : "%03lX ",
-                     (unsigned long)rx_id);
+            char hdr[20];
+            bool is_can = (ctx->protocol == 0U || ctx->protocol >= 6U);
+            if (is_can) {
+                snprintf(hdr, sizeof(hdr),
+                         (rx_id > 0x7FFU)
+                             ? (ctx->spaces ? "%08lX %02X " : "%08lX%02X")
+                             : (ctx->spaces ? "%03lX %02X " : "%03lX%02X"),
+                         (unsigned long)rx_id, (unsigned)resp_len);
+            } else {
+                snprintf(hdr, sizeof(hdr),
+                         (rx_id > 0x7FFU) ? (ctx->spaces ? "%08lX " : "%08lX")
+                                          : (ctx->spaces ? "%03lX " : "%03lX"),
+                         (unsigned long)rx_id);
+            }
             emit_str(ctx, hdr);
         }
         format_hex_bytes(ctx, resp, resp_len, line, sizeof(line));

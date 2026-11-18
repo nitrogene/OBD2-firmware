@@ -242,7 +242,7 @@ static esp_err_t http_get_root_handler(httpd_req_t *req) {
              "input,button{width:100%%;padding:8px;margin:4px 0 12px;box-sizing:border-box}"
              "fieldset{margin-bottom:16px;padding:12px}</style></head><body>"
              "<h2>OBD2-Scanner (ELM327)</h2>"
-             "<p>SoftAP: <b>%s</b> (192.168.0.10:35000) | STA: <b>%s</b></p>"
+             "<p>SoftAP: <b>%s</b> (" COMM_WIFI_AP_IP ":35000) | STA: <b>%s</b></p>"
              "<form method='POST' action='/config'><fieldset><legend>Wi-Fi &amp; BLE</legend>"
              "Current AP Password (Auth):<input id='admin_pass' name='admin_pass' type='password' "
              "required maxlength='63'>"
@@ -470,8 +470,8 @@ static void comm_wifi_tcp_task(void *arg) {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    /* Bind exclusively to SoftAP IP (192.168.0.10) so TCP :35000 is never exposed on STA networks
-     */
+    /* Bind exclusively to SoftAP IP (COMM_WIFI_AP_IP) so TCP :35000 is never exposed on STA
+     * networks */
     addr.sin_addr.s_addr = inet_addr(COMM_WIFI_AP_IP);
     addr.sin_port = htons(COMM_WIFI_TCP_PORT);
 
@@ -569,8 +569,8 @@ esp_err_t comm_wifi_init(void) {
     ESP_ERROR_CHECK(esp_netif_dhcps_stop(ap_netif));
     esp_netif_ip_info_t ip_info;
     memset(&ip_info, 0, sizeof(ip_info));
-    IP4_ADDR(&ip_info.ip, 192, 168, 0, 10);
-    IP4_ADDR(&ip_info.gw, 192, 168, 0, 10);
+    ip_info.ip.addr = inet_addr(COMM_WIFI_AP_IP);
+    ip_info.gw.addr = inet_addr(COMM_WIFI_AP_IP);
     IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
     err = esp_netif_set_ip_info(ap_netif, &ip_info);
     if (err != ESP_OK) {
@@ -624,7 +624,8 @@ esp_err_t comm_wifi_init(void) {
     }
 
     comm_wifi_start_http_server();
-    ESP_LOGI(TAG, "SoftAP '%s' started at 192.168.0.10:%d (WPA2-PSK)", s_ssid, COMM_WIFI_TCP_PORT);
+    ESP_LOGI(TAG, "SoftAP '%s' started at %s:%d (WPA2-PSK)", s_ssid, COMM_WIFI_AP_IP,
+             COMM_WIFI_TCP_PORT);
     return ESP_OK;
 }
 
