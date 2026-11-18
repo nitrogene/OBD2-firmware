@@ -666,7 +666,6 @@ esp_err_t comm_wifi_set_sta_credentials(const char *ssid, const char *pass) {
     if (err != ESP_OK) {
         return err;
     }
-    err = nvs_set_str(handle, NVS_KEY_SSID, s_ssid);
     err = nvs_set_str(handle, NVS_KEY_STA_SSID, ssid);
     if (err == ESP_OK) {
         err = nvs_set_str(handle, NVS_KEY_STA_PASS, pass);

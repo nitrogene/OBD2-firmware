@@ -13,6 +13,8 @@ extern "C" {
 #define COMM_WIFI_DEFAULT_SSID "OBD2-Scanner"
 /** @brief Default SoftAP password (open if empty, or >= 8 chars for WPA2). */
 #define COMM_WIFI_DEFAULT_PASS "12345678"
+/** @brief Default SoftAP static IPv4 address. */
+#define COMM_WIFI_AP_IP "192.168.0.10"
 /** @brief ELM327 Wi-Fi standard TCP port. */
 #define COMM_WIFI_TCP_PORT 35000
 
