@@ -74,7 +74,7 @@ Each root documentation file has a single, non-overlapping role:
 
 ### Routing Rule When Completing a `todo.md` Item
 Completing a task in `todo.md` updates `CHANGELOG.md` (when user-visible or release-relevant), and updates `README.md` **only if** the change alters the external contract:
-- **Update `README.md`** when adding, changing, or removing a user-facing feature, `AT`/CLI command, protocol, security/gating policy, GPIO/hardware spec, build profile, or test workflow.
+- **Update `README.md`** when adding, changing, or removing a user-facing feature, `AT`/CLI command, protocol, security/gating policy, GPIO/hardware spec, build profile, or test workflow. Also update [`android.md`](android.md) when the change affects the companion Android app contract (BLE/Wi-Fi transports, `AT` commands, or protocol framing).
 - **Do NOT update `README.md`** for internal bug fixes, thread-safety/mutex fixes, compiler/lint fixes, internal refactors, or hardware validation of an already-documented feature (record these in `CHANGELOG.md` only, and remove/prune the completed item from `todo.md`).
 
 ## 9. Dev-PC Hardware-In-the-Loop (`tests_hil/`) Regression Gate

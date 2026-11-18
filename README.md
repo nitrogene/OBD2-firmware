@@ -258,6 +258,7 @@ Active only when `CONFIG_OBD2_VIRTUAL_BENCH=y`:
   - Multi-transport lock arbitration: `uvx --with bleak python scripts/vbench_arbitration_test.py`
   - Web Config & wireless OTA: `uv run python scripts/vbench_http_test.py --ota build_vbench/obd2_firmware.bin`
 - **Hardware Bring-Up Checklist:** see [`bringup.md`](bringup.md).
+- **Companion Android App Specification:** see [`android.md`](android.md) (transport contract, ELM327/extended commands, and configurable pre/post-fault context capture mode).
 
 ---
 
