@@ -230,8 +230,12 @@ static esp_err_t http_get_root_handler(httpd_req_t *req) {
     html_escape((s_sta_ssid[0] != '\0') ? s_sta_ssid : "disabled", esc_sta, sizeof(esc_sta));
     wifi_unlock();
 
-    char html[2560];
-    snprintf(html, sizeof(html),
+    size_t html_cap = 3072U;
+    char *html = (char *)malloc(html_cap);
+    if (html == NULL) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
+    }
+    snprintf(html, html_cap,
              "<!DOCTYPE html><html><head><meta charset='utf-8'>"
              "<title>OBD2-Scanner Config</title>"
              "<style>body{font-family:sans-serif;max-width:520px;margin:24px auto;padding:0 12px}"
@@ -269,7 +273,9 @@ static esp_err_t http_get_root_handler(httpd_req_t *req) {
              esc_ssid, esc_sta, esc_ssid, esc_sta);
 
     httpd_resp_set_type(req, "text/html");
-    return httpd_resp_sendstr(req, html);
+    esp_err_t res = httpd_resp_sendstr(req, html);
+    free(html);
+    return res;
 }
 
 static esp_err_t http_post_config_handler(httpd_req_t *req) {
