@@ -41,8 +41,7 @@ typedef struct {
  * @param mode    Normal, Listen-Only (probe/sniffer), or No-Ack.
  * @param filter  Optional hardware acceptance filter (NULL = accept all).
  */
-esp_err_t twai_drv_init(twai_drv_bitrate_t bitrate,
-                        twai_drv_mode_t mode,
+esp_err_t twai_drv_init(twai_drv_bitrate_t bitrate, twai_drv_mode_t mode,
                         const twai_drv_filter_t *filter);
 
 /**
@@ -63,8 +62,7 @@ esp_err_t twai_drv_receive(twai_drv_frame_t *out_frame, uint32_t timeout_ms);
 /**
  * @brief Probe CAN bus bitrate (500k then 250k) in LISTEN_ONLY mode (no TX/ACK).
  */
-esp_err_t twai_drv_probe_bitrate(uint32_t per_rate_timeout_ms,
-                                 twai_drv_bitrate_t *out_bitrate);
+esp_err_t twai_drv_probe_bitrate(uint32_t per_rate_timeout_ms, twai_drv_bitrate_t *out_bitrate);
 
 /**
  * @brief Check TWAI alerts/status and initiate Bus-Off recovery if needed.

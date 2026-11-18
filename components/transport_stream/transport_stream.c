@@ -24,12 +24,9 @@ typedef struct {
 
 static tx_entry_t s_tx_table[4] = {0};
 
-esp_err_t transport_stream_init(uint32_t lock_timeout_ms)
-{
+esp_err_t transport_stream_init(uint32_t lock_timeout_ms) {
     if (s_rb == NULL) {
-        s_rb = xRingbufferCreateStatic(TRANSPORT_RX_BUF_BYTES,
-                                       RINGBUF_TYPE_BYTEBUF,
-                                       s_rb_storage,
+        s_rb = xRingbufferCreateStatic(TRANSPORT_RX_BUF_BYTES, RINGBUF_TYPE_BYTEBUF, s_rb_storage,
                                        &s_rb_struct);
         if (s_rb == NULL) {
             return ESP_ERR_NO_MEM;
@@ -46,8 +43,7 @@ esp_err_t transport_stream_init(uint32_t lock_timeout_ms)
     return ESP_OK;
 }
 
-esp_err_t transport_stream_register_tx(transport_id_t id, transport_tx_fn_t tx_fn, void *ctx)
-{
+esp_err_t transport_stream_register_tx(transport_id_t id, transport_tx_fn_t tx_fn, void *ctx) {
     if (id <= TRANSPORT_ID_NONE || id > TRANSPORT_ID_WIFI) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -56,10 +52,9 @@ esp_err_t transport_stream_register_tx(transport_id_t id, transport_tx_fn_t tx_f
     return ESP_OK;
 }
 
-esp_err_t transport_stream_feed_rx(transport_id_t id, const uint8_t *data, size_t len)
-{
-    if (s_rb == NULL || s_lock == NULL || data == NULL || len == 0U ||
-        id <= TRANSPORT_ID_NONE || id > TRANSPORT_ID_WIFI) {
+esp_err_t transport_stream_feed_rx(transport_id_t id, const uint8_t *data, size_t len) {
+    if (s_rb == NULL || s_lock == NULL || data == NULL || len == 0U || id <= TRANSPORT_ID_NONE ||
+        id > TRANSPORT_ID_WIFI) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -83,8 +78,7 @@ esp_err_t transport_stream_feed_rx(transport_id_t id, const uint8_t *data, size_
     return (ok == pdTRUE) ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
-void transport_stream_release(transport_id_t id)
-{
+void transport_stream_release(transport_id_t id) {
     if (s_lock == NULL) {
         return;
     }
@@ -96,14 +90,13 @@ void transport_stream_release(transport_id_t id)
     }
 }
 
-size_t transport_stream_read(uint8_t *out_buf, size_t max_len, uint32_t timeout_ms)
-{
+size_t transport_stream_read(uint8_t *out_buf, size_t max_len, uint32_t timeout_ms) {
     if (s_rb == NULL || out_buf == NULL || max_len == 0U) {
         return 0U;
     }
     size_t item_size = 0U;
-    uint8_t *item = (uint8_t *)xRingbufferReceiveUpTo(
-        s_rb, &item_size, pdMS_TO_TICKS(timeout_ms), max_len);
+    uint8_t *item =
+        (uint8_t *)xRingbufferReceiveUpTo(s_rb, &item_size, pdMS_TO_TICKS(timeout_ms), max_len);
     if (item == NULL || item_size == 0U) {
         return 0U;
     }
@@ -112,8 +105,7 @@ size_t transport_stream_read(uint8_t *out_buf, size_t max_len, uint32_t timeout_
     return item_size;
 }
 
-esp_err_t transport_stream_write(const uint8_t *data, size_t len)
-{
+esp_err_t transport_stream_write(const uint8_t *data, size_t len) {
     if (data == NULL || len == 0U || s_lock == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -122,14 +114,14 @@ esp_err_t transport_stream_write(const uint8_t *data, size_t len)
         active = s_active_id;
         xSemaphoreGive(s_lock);
     }
-    if (active <= TRANSPORT_ID_NONE || active > TRANSPORT_ID_WIFI || s_tx_table[active].fn == NULL) {
+    if (active <= TRANSPORT_ID_NONE || active > TRANSPORT_ID_WIFI ||
+        s_tx_table[active].fn == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
     int rc = s_tx_table[active].fn(data, len, s_tx_table[active].ctx);
     return (rc == 0) ? ESP_OK : ESP_FAIL;
 }
 
-transport_id_t transport_stream_active_id(void)
-{
+transport_id_t transport_stream_active_id(void) {
     return s_active_id;
 }

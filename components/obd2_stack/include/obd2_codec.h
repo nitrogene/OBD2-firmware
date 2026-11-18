@@ -10,23 +10,28 @@ extern "C" {
 #endif
 
 /* SAE J1979 Modes */
-#define OBD2_MODE_CURRENT_DATA        0x01U
-#define OBD2_MODE_FREEZE_FRAME        0x02U
-#define OBD2_MODE_READ_DTCS           0x03U
-#define OBD2_MODE_CLEAR_DTCS          0x04U
-#define OBD2_MODE_O2_MONITOR          0x05U
-#define OBD2_MODE_ONBOARD_MON         0x06U
-#define OBD2_MODE_PENDING_DTCS        0x07U
-#define OBD2_MODE_CONTROL_OP          0x08U
-#define OBD2_MODE_VEHICLE_INFO        0x09U
-#define OBD2_MODE_PERMANENT_DTCS      0x0AU
+#define OBD2_MODE_CURRENT_DATA 0x01U
+#define OBD2_MODE_FREEZE_FRAME 0x02U
+#define OBD2_MODE_READ_DTCS 0x03U
+#define OBD2_MODE_CLEAR_DTCS 0x04U
+#define OBD2_MODE_O2_MONITOR 0x05U
+#define OBD2_MODE_ONBOARD_MON 0x06U
+#define OBD2_MODE_PENDING_DTCS 0x07U
+#define OBD2_MODE_CONTROL_OP 0x08U
+#define OBD2_MODE_VEHICLE_INFO 0x09U
+#define OBD2_MODE_PERMANENT_DTCS 0x0AU
 
 /**
  * @brief Return true if a diagnostic SID is permitted under the current mode.
  *
- * Sensitive write/flash services (0x27 SecurityAccess, 0x31 RoutineControl,
+ * Sensitive state-modifying, actuator, reset, and flash services
+ * (0x11 ECUReset, 0x27 SecurityAccess, 0x28 CommunicationControl,
+ * 0x2E WriteDataByIdentifier, 0x2F InputOutputControlByIdentifier,
+ * 0x30 InputOutputControlByLocalIdentifier, 0x31 RoutineControl,
  * 0x34 RequestDownload, 0x35 RequestUpload, 0x36 TransferData,
- * 0x37 RequestTransferExit) are blocked unless extended_unlocked is true.
+ * 0x37 RequestTransferExit, 0x3B WriteDataByLocalIdentifier,
+ * 0x3D WriteMemoryByAddress, 0x85 ControlDTCSetting) are blocked
+ * unless extended_unlocked is true.
  */
 bool obd2_is_service_allowed(uint8_t sid, bool extended_unlocked);
 
@@ -51,13 +56,10 @@ int obd2_encode_dtc(const char *dtc_str, uint8_t out_bytes[2]);
  * @brief Scale common SAE J1979 Mode 01 PIDs into fixed-point value * 100.
  *
  * Supported PIDs: 0x04 (Load %), 0x05 (Coolant C), 0x0C (RPM),
- * 0x0D (Speed km/h), 0x0F (IAT C), 0x11 (Throttle %), 0x42 (Module mV * 100).
+ * 0x0D (Speed km/h), 0x0F (IAT C), 0x11 (Throttle %), 0x42 (Control module V * 100).
  * Returns 0 on success, -1 on unsupported PID or short data.
  */
-int obd2_scale_mode01_pid(uint8_t pid,
-                          const uint8_t *data,
-                          uint8_t len,
-                          int32_t *out_val_x100);
+int obd2_scale_mode01_pid(uint8_t pid, const uint8_t *data, uint8_t len, int32_t *out_val_x100);
 
 #ifdef __cplusplus
 }

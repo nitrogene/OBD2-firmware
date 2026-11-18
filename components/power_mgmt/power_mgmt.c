@@ -12,7 +12,7 @@
 
 static const char *TAG = "power_mgmt";
 
-#define POWER_MA_WINDOW        32U
+#define POWER_MA_WINDOW 32U
 #define POWER_SAMPLE_PERIOD_MS 250U
 
 static SemaphoreHandle_t s_mutex = NULL;
@@ -26,8 +26,7 @@ static uint32_t s_ring_count = 0;
 static uint64_t s_vbat_sum = 0;
 static uint64_t s_adc_sum = 0;
 
-power_state_t power_classify_vbat_mv(uint32_t vbat_mv)
-{
+power_state_t power_classify_vbat_mv(uint32_t vbat_mv) {
     if (vbat_mv < POWER_THRESH_USB_ONLY_MV) {
         return POWER_STATE_USB_ONLY;
     }
@@ -43,8 +42,7 @@ power_state_t power_classify_vbat_mv(uint32_t vbat_mv)
     return POWER_STATE_OVERVOLTAGE;
 }
 
-const char *power_mgmt_state_to_str(power_state_t state)
-{
+const char *power_mgmt_state_to_str(power_state_t state) {
     switch (state) {
     case POWER_STATE_USB_ONLY:
         return "USB_ONLY";
@@ -61,9 +59,8 @@ const char *power_mgmt_state_to_str(power_state_t state)
     }
 }
 
-static void update_moving_average(uint32_t adc_mv, uint32_t vbat_mv,
-                                  uint32_t *out_avg_adc, uint32_t *out_avg_vbat)
-{
+static void update_moving_average(uint32_t adc_mv, uint32_t vbat_mv, uint32_t *out_avg_adc,
+                                  uint32_t *out_avg_vbat) {
     if (s_ring_count < POWER_MA_WINDOW) {
         s_ring_count++;
     } else {
@@ -81,8 +78,7 @@ static void update_moving_average(uint32_t adc_mv, uint32_t vbat_mv,
     *out_avg_vbat = (uint32_t)(s_vbat_sum / s_ring_count);
 }
 
-static void power_telemetry_task(void *arg)
-{
+static void power_telemetry_task(void *arg) {
     (void)arg;
     power_state_t prev_state = POWER_STATE_USB_ONLY;
     bool first_sample = true;
@@ -104,16 +100,15 @@ static void power_telemetry_task(void *arg)
 
             power_state_t new_state = power_classify_vbat_mv(avg_vbat_mv);
             int64_t now_us = esp_timer_get_time();
-
-            if (new_state == POWER_STATE_ENGINE_RUNNING) {
-                s_last_activity_us = now_us;
-            }
-
-            uint32_t inactivity_ms = (uint32_t)((now_us - s_last_activity_us) / 1000LL);
+            uint32_t inactivity_ms = 0U;
             bool sleep_armed = (new_state == POWER_STATE_RESTING) ||
                                (new_state == POWER_STATE_UNDERVOLTAGE_CRITICAL);
 
             if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+                if (new_state == POWER_STATE_ENGINE_RUNNING) {
+                    s_last_activity_us = now_us;
+                }
+                inactivity_ms = (uint32_t)((now_us - s_last_activity_us) / 1000LL);
                 s_status.adc_mv = avg_adc_mv;
                 s_status.vbat_mv = avg_vbat_mv;
                 s_status.state = new_state;
@@ -124,8 +119,7 @@ static void power_telemetry_task(void *arg)
 
             if (first_sample || new_state != prev_state) {
                 ESP_LOGI(TAG, "Power state -> %s (V_BAT=%lu mV, V_ADC=%lu mV)",
-                         power_mgmt_state_to_str(new_state),
-                         (unsigned long)avg_vbat_mv,
+                         power_mgmt_state_to_str(new_state), (unsigned long)avg_vbat_mv,
                          (unsigned long)avg_adc_mv);
                 if (new_state == POWER_STATE_OVERVOLTAGE) {
                     ESP_LOGE(TAG, "OVERVOLTAGE FAULT (> 15.5 V)!");
@@ -152,8 +146,7 @@ static void power_telemetry_task(void *arg)
     }
 }
 
-esp_err_t power_mgmt_boot_self_test(void)
-{
+esp_err_t power_mgmt_boot_self_test(void) {
     esp_reset_reason_t reason = esp_reset_reason();
     if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_INT_WDT || reason == ESP_RST_WDT) {
         ESP_LOGW(TAG, "Previous reset was triggered by hardware watchdog (reason=%d)", (int)reason);
@@ -170,19 +163,31 @@ esp_err_t power_mgmt_boot_self_test(void)
     }
 
     power_state_t st = power_classify_vbat_mv(vbat_mv);
-    ESP_LOGI(TAG, "Boot self-test: V_ADC=%lu mV, V_BAT=%lu mV (%s)",
-             (unsigned long)adc_mv,
-             (unsigned long)vbat_mv,
-             power_mgmt_state_to_str(st));
+    ESP_LOGI(TAG, "Boot self-test: V_ADC=%lu mV, V_BAT=%lu mV (%s)", (unsigned long)adc_mv,
+             (unsigned long)vbat_mv, power_mgmt_state_to_str(st));
     return ESP_OK;
 }
 
-esp_err_t power_mgmt_init(void)
-{
+esp_err_t power_mgmt_init(void) {
     s_mutex = xSemaphoreCreateMutex();
     if (s_mutex == NULL) {
         return ESP_ERR_NO_MEM;
     }
+
+    s_status.wakeup_cause = esp_sleep_get_wakeup_cause();
+#ifndef CONFIG_OBD2_VIRTUAL_BENCH
+    if (s_status.wakeup_cause == ESP_SLEEP_WAKEUP_TIMER) {
+        uint32_t adc_mv = 0;
+        uint32_t vbat_mv = 0;
+        if (bsp_vbat_read_mv(&adc_mv, &vbat_mv) == ESP_OK && vbat_mv < POWER_THRESH_ENGINE_ON_MV) {
+            /* Engine still off (< 13.2 V); return immediately to Deep Sleep */
+            power_mgmt_enter_deep_sleep();
+        }
+        ESP_LOGI(TAG, "Woke up on VBAT_SENSE > 13.2 V (%lu mV)", (unsigned long)vbat_mv);
+    } else if (s_status.wakeup_cause != ESP_SLEEP_WAKEUP_UNDEFINED) {
+        ESP_LOGI(TAG, "Woke up from Deep Sleep (cause=%d)", (int)s_status.wakeup_cause);
+    }
+#endif
 
     const esp_task_wdt_config_t wdt_cfg = {
         .timeout_ms = 5000,
@@ -200,10 +205,6 @@ esp_err_t power_mgmt_init(void)
     }
 
     s_last_activity_us = esp_timer_get_time();
-    s_status.wakeup_cause = esp_sleep_get_wakeup_cause();
-    if (s_status.wakeup_cause != ESP_SLEEP_WAKEUP_UNDEFINED) {
-        ESP_LOGI(TAG, "Woke up from Deep Sleep (cause=%d)", (int)s_status.wakeup_cause);
-    }
     (void)power_mgmt_boot_self_test();
 
     BaseType_t ok = xTaskCreate(power_telemetry_task, "power_telemetry", 3072, NULL, 3, NULL);
@@ -215,8 +216,7 @@ esp_err_t power_mgmt_init(void)
     return ESP_OK;
 }
 
-esp_err_t power_mgmt_get_status(power_status_t *out_status)
-{
+esp_err_t power_mgmt_get_status(power_status_t *out_status) {
     if (out_status == NULL || s_mutex == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -228,13 +228,19 @@ esp_err_t power_mgmt_get_status(power_status_t *out_status)
     return ESP_OK;
 }
 
-void power_mgmt_notify_activity(void)
-{
-    s_last_activity_us = esp_timer_get_time();
+void power_mgmt_notify_activity(void) {
+    int64_t now_us = esp_timer_get_time();
+    if (s_mutex != NULL) {
+        if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            s_last_activity_us = now_us;
+            xSemaphoreGive(s_mutex);
+        }
+    } else {
+        s_last_activity_us = now_us;
+    }
 }
 
-void __attribute__((noreturn)) power_mgmt_enter_deep_sleep(void)
-{
+void __attribute__((noreturn)) power_mgmt_enter_deep_sleep(void) {
     bsp_led_set_pattern(BSP_LED_OFF);
     vTaskDelay(pdMS_TO_TICKS(50));
 
@@ -251,7 +257,10 @@ void __attribute__((noreturn)) power_mgmt_enter_deep_sleep(void)
     (void)rtc_gpio_pulldown_dis(BSP_PIN_TWAI_RX);
 
     ESP_ERROR_CHECK(esp_sleep_enable_ext1_wakeup_io(wakeup_mask, ESP_EXT1_WAKEUP_ANY_LOW));
-    ESP_LOGI(TAG, "Entering Deep Sleep (ext1 wake-up on IO%d / IO%d LOW)",
+    /* Also enable periodic RTC timer wake-up to sample VBAT_SENSE (> 13.2 V alternator crank on
+     * K-Line vehicles) */
+    ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(10ULL * 1000000ULL));
+    ESP_LOGI(TAG, "Entering Deep Sleep (ext1 wake-up on IO%d / IO%d LOW + 10s VBAT > 13.2V check)",
              (int)BSP_PIN_KLINE_RX, (int)BSP_PIN_TWAI_RX);
 
     esp_deep_sleep_start();

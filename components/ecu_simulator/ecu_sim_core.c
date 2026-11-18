@@ -3,8 +3,7 @@
 #include <string.h>
 #include "obd2_codec.h"
 
-void ecu_sim_init(ecu_sim_state_t *sim)
-{
+void ecu_sim_init(ecu_sim_state_t *sim) {
     if (sim == NULL) {
         return;
     }
@@ -18,29 +17,25 @@ void ecu_sim_init(ecu_sim_state_t *sim)
     memcpy(sim->vin, "1G1JC5444R7252367", 18U);
 }
 
-void ecu_sim_set_rpm(ecu_sim_state_t *sim, uint16_t rpm)
-{
+void ecu_sim_set_rpm(ecu_sim_state_t *sim, uint16_t rpm) {
     if (sim != NULL) {
         sim->rpm = rpm;
     }
 }
 
-void ecu_sim_set_speed(ecu_sim_state_t *sim, uint8_t speed_kmh)
-{
+void ecu_sim_set_speed(ecu_sim_state_t *sim, uint8_t speed_kmh) {
     if (sim != NULL) {
         sim->speed_kmh = speed_kmh;
     }
 }
 
-void ecu_sim_set_coolant(ecu_sim_state_t *sim, int16_t coolant_c)
-{
+void ecu_sim_set_coolant(ecu_sim_state_t *sim, int16_t coolant_c) {
     if (sim != NULL) {
         sim->coolant_c = coolant_c;
     }
 }
 
-int ecu_sim_inject_dtc(ecu_sim_state_t *sim, const char *dtc_str)
-{
+int ecu_sim_inject_dtc(ecu_sim_state_t *sim, const char *dtc_str) {
     if (sim == NULL || dtc_str == NULL || sim->dtc_count >= ECU_SIM_MAX_DTCS) {
         return -1;
     }
@@ -54,21 +49,15 @@ int ecu_sim_inject_dtc(ecu_sim_state_t *sim, const char *dtc_str)
     return 0;
 }
 
-void ecu_sim_clear_dtcs(ecu_sim_state_t *sim)
-{
+void ecu_sim_clear_dtcs(ecu_sim_state_t *sim) {
     if (sim != NULL) {
         sim->dtc_count = 0U;
         memset(sim->dtcs, 0, sizeof(sim->dtcs));
     }
 }
 
-static int handle_mode01_or_02(const ecu_sim_state_t *sim,
-                               uint8_t mode,
-                               uint8_t pid,
-                               uint8_t *out_resp,
-                               size_t max_resp,
-                               size_t *out_len)
-{
+static int handle_mode01_or_02(const ecu_sim_state_t *sim, uint8_t mode, uint8_t pid,
+                               uint8_t *out_resp, size_t max_resp, size_t *out_len) {
     if (max_resp < 6U) {
         return -1;
     }
@@ -76,7 +65,7 @@ static int handle_mode01_or_02(const ecu_sim_state_t *sim,
     out_resp[1] = pid;
 
     switch (pid) {
-    case 0x00U: /* Supported PIDs 01..20 */
+    case 0x00U:              /* Supported PIDs 01..20 */
         out_resp[2] = 0x18U; /* 04, 05 */
         out_resp[3] = 0x1AU; /* 0C, 0D, 0F */
         out_resp[4] = 0x80U; /* 11 */
@@ -119,14 +108,9 @@ static int handle_mode01_or_02(const ecu_sim_state_t *sim,
     }
 }
 
-int ecu_sim_handle_request(ecu_sim_state_t *sim,
-                           bool extended_unlocked,
-                           const uint8_t *req,
-                           size_t req_len,
-                           uint8_t *out_resp,
-                           size_t max_resp,
-                           size_t *out_resp_len)
-{
+int ecu_sim_handle_request(ecu_sim_state_t *sim, bool extended_unlocked, const uint8_t *req,
+                           size_t req_len, uint8_t *out_resp, size_t max_resp,
+                           size_t *out_resp_len) {
     if (sim == NULL || req == NULL || req_len == 0U || out_resp == NULL || out_resp_len == NULL) {
         return -1;
     }
@@ -308,6 +292,62 @@ int ecu_sim_handle_request(ecu_sim_state_t *sim,
         }
         out_resp[0] = 0x54U;
         *out_resp_len = 1U;
+        return 0;
+    }
+
+    /* KWP2000 TesterPresent (0x3E) */
+    if (sid == 0x3EU) {
+        if (max_resp < 1U) {
+            return -1;
+        }
+        out_resp[0] = 0x7EU;
+        *out_resp_len = 1U;
+        return 0;
+    }
+
+    /* KWP2000 StartCommunication (0x81) / StopCommunication (0x82) */
+    if (sid == 0x81U && max_resp >= 3U) {
+        out_resp[0] = 0xC1U;
+        out_resp[1] = 0xEFU;
+        out_resp[2] = 0x8FU;
+        *out_resp_len = 3U;
+        return 0;
+    }
+    if (sid == 0x82U && max_resp >= 1U) {
+        out_resp[0] = 0xC2U;
+        *out_resp_len = 1U;
+        return 0;
+    }
+
+    /* KWP2000 ReadDataByLocalIdentifier (0x21) */
+    if (sid == 0x21U && req_len >= 2U && max_resp >= 6U) {
+        uint32_t raw_rpm = (uint32_t)sim->rpm * 4U;
+        int16_t shifted_clt = sim->coolant_c + 40;
+        out_resp[0] = 0x61U;
+        out_resp[1] = req[1];
+        out_resp[2] = (uint8_t)((raw_rpm >> 8) & 0xFFU);
+        out_resp[3] = (uint8_t)(raw_rpm & 0xFFU);
+        out_resp[4] = sim->speed_kmh;
+        out_resp[5] = (shifted_clt < 0) ? 0U : (shifted_clt > 255 ? 255U : (uint8_t)shifted_clt);
+        *out_resp_len = 6U;
+        return 0;
+    }
+
+    /* KWP2000 ReadDiagnosticTroubleCodesByStatus (0x18) */
+    if (sid == 0x18U) {
+        size_t needed = 2U + (size_t)sim->dtc_count * 3U;
+        if (max_resp < needed) {
+            return -1;
+        }
+        out_resp[0] = 0x58U;
+        out_resp[1] = sim->dtc_count;
+        for (uint8_t i = 0; i < sim->dtc_count; ++i) {
+            size_t off = 2U + (size_t)i * 3U;
+            out_resp[off] = sim->dtcs[i][0];
+            out_resp[off + 1U] = sim->dtcs[i][1];
+            out_resp[off + 2U] = 0x60U;
+        }
+        *out_resp_len = needed;
         return 0;
     }
 

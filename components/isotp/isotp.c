@@ -2,13 +2,11 @@
 
 #include <string.h>
 
-static uint32_t get_now_ms(const isotp_link_t *link)
-{
+static uint32_t get_now_ms(const isotp_link_t *link) {
     return (link->cfg.get_ms != NULL) ? link->cfg.get_ms(link->cfg.user_ctx) : 0U;
 }
 
-static uint32_t decode_stmin_ms(uint8_t stmin_raw)
-{
+static uint32_t decode_stmin_ms(uint8_t stmin_raw) {
     if (stmin_raw <= 0x7FU) {
         return stmin_raw;
     }
@@ -18,8 +16,7 @@ static uint32_t decode_stmin_ms(uint8_t stmin_raw)
     return 127U;
 }
 
-static int send_can_frame(isotp_link_t *link, const uint8_t *payload, uint8_t len)
-{
+static int send_can_frame(isotp_link_t *link, const uint8_t *payload, uint8_t len) {
     uint8_t frame[8];
     uint8_t dlc = len;
 
@@ -35,8 +32,7 @@ static int send_can_frame(isotp_link_t *link, const uint8_t *payload, uint8_t le
     return (rc == 0) ? ISOTP_OK : ISOTP_ERR_TX_FAIL;
 }
 
-static int send_flow_control(isotp_link_t *link, uint8_t fs)
-{
+static int send_flow_control(isotp_link_t *link, uint8_t fs) {
     uint8_t fc[3] = {
         (uint8_t)(ISOTP_PCI_FC | (fs & 0x0FU)),
         link->cfg.block_size,
@@ -45,8 +41,7 @@ static int send_flow_control(isotp_link_t *link, uint8_t fs)
     return send_can_frame(link, fc, sizeof(fc));
 }
 
-int isotp_init(isotp_link_t *link, const isotp_config_t *cfg)
-{
+int isotp_init(isotp_link_t *link, const isotp_config_t *cfg) {
     if (link == NULL || cfg == NULL || cfg->send_can == NULL) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -61,8 +56,7 @@ int isotp_init(isotp_link_t *link, const isotp_config_t *cfg)
     return ISOTP_OK;
 }
 
-int isotp_send(isotp_link_t *link, const uint8_t *payload, uint16_t len)
-{
+int isotp_send(isotp_link_t *link, const uint8_t *payload, uint16_t len) {
     if (link == NULL || payload == NULL || len == 0U || len > ISOTP_MAX_PAYLOAD) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -104,8 +98,7 @@ int isotp_send(isotp_link_t *link, const uint8_t *payload, uint16_t len)
     return ISOTP_OK;
 }
 
-static int handle_rx_sf(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
-{
+static int handle_rx_sf(isotp_link_t *link, const uint8_t *data, uint8_t dlc) {
     uint8_t len = data[0] & 0x0FU;
     if (len == 0U || len > 7U || (uint8_t)(1U + len) > dlc) {
         return ISOTP_ERR_INVALID_ARG;
@@ -118,8 +111,7 @@ static int handle_rx_sf(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
     return ISOTP_OK;
 }
 
-static int handle_rx_ff(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
-{
+static int handle_rx_ff(isotp_link_t *link, const uint8_t *data, uint8_t dlc) {
     if (dlc < 8U) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -141,8 +133,7 @@ static int handle_rx_ff(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
     return send_flow_control(link, ISOTP_FC_CTS);
 }
 
-static int handle_rx_cf(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
-{
+static int handle_rx_cf(isotp_link_t *link, const uint8_t *data, uint8_t dlc) {
     if (link->rx_state != ISOTP_RX_RECEIVING_CF || dlc < 2U) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -180,8 +171,7 @@ static int handle_rx_cf(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
     return ISOTP_OK;
 }
 
-static int handle_rx_fc(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
-{
+static int handle_rx_fc(isotp_link_t *link, const uint8_t *data, uint8_t dlc) {
     if (link->tx_state != ISOTP_TX_WAIT_FC || dlc < 3U) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -206,12 +196,8 @@ static int handle_rx_fc(isotp_link_t *link, const uint8_t *data, uint8_t dlc)
     return ISOTP_ERR_OVERFLOW;
 }
 
-int isotp_on_can_rx(isotp_link_t *link,
-                    uint32_t can_id,
-                    bool extd,
-                    const uint8_t *data,
-                    uint8_t dlc)
-{
+int isotp_on_can_rx(isotp_link_t *link, uint32_t can_id, bool extd, const uint8_t *data,
+                    uint8_t dlc) {
     if (link == NULL || data == NULL || dlc == 0U || dlc > 8U) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -234,8 +220,7 @@ int isotp_on_can_rx(isotp_link_t *link,
     }
 }
 
-int isotp_poll(isotp_link_t *link)
-{
+int isotp_poll(isotp_link_t *link) {
     if (link == NULL) {
         return ISOTP_ERR_INVALID_ARG;
     }
@@ -300,11 +285,7 @@ int isotp_poll(isotp_link_t *link)
     return ISOTP_OK;
 }
 
-int isotp_receive(isotp_link_t *link,
-                  uint8_t *out_buf,
-                  uint16_t max_len,
-                  uint16_t *out_len)
-{
+int isotp_receive(isotp_link_t *link, uint8_t *out_buf, uint16_t max_len, uint16_t *out_len) {
     if (link == NULL || out_buf == NULL || out_len == NULL) {
         return ISOTP_ERR_INVALID_ARG;
     }

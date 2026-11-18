@@ -5,35 +5,30 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void emit_raw(const elm327_ctx_t *ctx, const char *s, size_t len)
-{
+static void emit_raw(const elm327_ctx_t *ctx, const char *s, size_t len) {
     if (ctx->cb.write_bytes != NULL && len > 0U) {
         ctx->cb.write_bytes((const uint8_t *)s, len, ctx->cb.user_ctx);
     }
 }
 
-static void emit_str(const elm327_ctx_t *ctx, const char *s)
-{
+static void emit_str(const elm327_ctx_t *ctx, const char *s) {
     if (s != NULL) {
         emit_raw(ctx, s, strlen(s));
     }
 }
 
-static void emit_eol(const elm327_ctx_t *ctx)
-{
+static void emit_eol(const elm327_ctx_t *ctx) {
     emit_str(ctx, ctx->linefeeds ? "\r\n" : "\r");
 }
 
-static void emit_reply(const elm327_ctx_t *ctx, const char *text)
-{
+static void emit_reply(const elm327_ctx_t *ctx, const char *text) {
     emit_str(ctx, text);
     emit_eol(ctx);
     emit_eol(ctx);
     emit_str(ctx, ">");
 }
 
-static const char *proto_description(uint8_t proto)
-{
+static const char *proto_description(uint8_t proto) {
     switch (proto) {
     case 0:
         return "AUTO";
@@ -56,8 +51,7 @@ static const char *proto_description(uint8_t proto)
     }
 }
 
-static int hex_val(char c)
-{
+static int hex_val(char c) {
     if (c >= '0' && c <= '9') {
         return c - '0';
     }
@@ -70,8 +64,7 @@ static int hex_val(char c)
     return -1;
 }
 
-static int parse_hex_bytes(const char *s, uint8_t *out, size_t max_out)
-{
+static int parse_hex_bytes(const char *s, uint8_t *out, size_t max_out) {
     size_t count = 0U;
     while (*s != '\0') {
         while (*s == ' ' || *s == '\t') {
@@ -91,8 +84,91 @@ static int parse_hex_bytes(const char *s, uint8_t *out, size_t max_out)
     return (count > 0U) ? (int)count : -1;
 }
 
-void elm327_reset_defaults(elm327_ctx_t *ctx)
-{
+static char s_ext_passkey[32] = {0};
+static elm327_sim_cmd_cb_t s_sim_cmd_cb = NULL;
+
+void elm327_set_ext_passkey(const char *passkey) {
+    if (passkey == NULL) {
+        s_ext_passkey[0] = '\0';
+        return;
+    }
+    size_t i = 0U;
+    for (; passkey[i] != '\0' && i + 1U < sizeof(s_ext_passkey); ++i) {
+        s_ext_passkey[i] = (char)toupper((unsigned char)passkey[i]);
+    }
+    s_ext_passkey[i] = '\0';
+}
+
+void elm327_register_sim_cmd_cb(elm327_sim_cmd_cb_t cb) {
+    s_sim_cmd_cb = cb;
+}
+
+static bool parse_can_id_hex(const char *s, size_t min_len, size_t max_len, uint32_t max_val,
+                             uint32_t *out_val) {
+    if (s == NULL || out_val == NULL) {
+        return false;
+    }
+    size_t len = strlen(s);
+    if (len < min_len || len > max_len) {
+        return false;
+    }
+    uint32_t acc = 0U;
+    for (size_t i = 0U; i < len; ++i) {
+        int v = hex_val(s[i]);
+        if (v < 0) {
+            return false;
+        }
+        acc = (acc << 4) | (uint32_t)v;
+    }
+    if (acc > max_val) {
+        return false;
+    }
+    *out_val = acc;
+    return true;
+}
+
+static bool parse_sim_int(const char *val_str, long min_val, long max_val) {
+    if (val_str == NULL || *val_str == '\0') {
+        return false;
+    }
+    char *endptr = NULL;
+    long v = strtol(val_str, &endptr, 10);
+    if (endptr == val_str || *endptr != '\0') {
+        return false;
+    }
+    return (v >= min_val && v <= max_val);
+}
+
+static bool validate_sim_kv(const char *kv) {
+    if (strncmp(kv, "RPM=", 4) == 0) {
+        return parse_sim_int(kv + 4, 0, 16383);
+    }
+    if (strncmp(kv, "SPD=", 4) == 0) {
+        return parse_sim_int(kv + 4, 0, 255);
+    }
+    if (strncmp(kv, "SPEED=", 6) == 0) {
+        return parse_sim_int(kv + 6, 0, 255);
+    }
+    if (strncmp(kv, "CLT=", 4) == 0) {
+        return parse_sim_int(kv + 4, -40, 215);
+    }
+    if (strncmp(kv, "COOLANT=", 8) == 0) {
+        return parse_sim_int(kv + 8, -40, 215);
+    }
+    if (strncmp(kv, "VBAT=", 5) == 0) {
+        return parse_sim_int(kv + 5, 5000, 24000);
+    }
+    if (strncmp(kv, "DTC=", 4) == 0) {
+        const char *dtc = kv + 4;
+        return (strcmp(dtc, "CLEAR") == 0 || strlen(dtc) == 5U);
+    }
+    if (strcmp(kv, "START") == 0 || strcmp(kv, "STOP") == 0) {
+        return true;
+    }
+    return false;
+}
+
+void elm327_reset_defaults(elm327_ctx_t *ctx) {
     ctx->echo = true;
     ctx->linefeeds = false;
     ctx->spaces = true;
@@ -110,8 +186,7 @@ void elm327_reset_defaults(elm327_ctx_t *ctx)
     ctx->fc_mode = 0U;
 }
 
-void elm327_init(elm327_ctx_t *ctx, const elm327_callbacks_t *cb)
-{
+void elm327_init(elm327_ctx_t *ctx, const elm327_callbacks_t *cb) {
     if (ctx == NULL) {
         return;
     }
@@ -122,10 +197,16 @@ void elm327_init(elm327_ctx_t *ctx, const elm327_callbacks_t *cb)
     elm327_reset_defaults(ctx);
 }
 
-static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
-{
-    /* Extended custom mode toggle: AT+EXT=1 / AT+EXT=0 */
-    if (strcmp(upper, "AT+EXT=1") == 0) {
+static bool handle_at_command(elm327_ctx_t *ctx, const char *upper) {
+    /* Extended custom mode toggle: AT+EXT=1[,<PASSKEY>] / AT+EXT=0 */
+    if (strcmp(upper, "AT+EXT=1") == 0 || strncmp(upper, "AT+EXT=1,", 9) == 0) {
+        if (s_ext_passkey[0] != '\0') {
+            const char *provided = (upper[8] == ',') ? &upper[9] : "";
+            if (strcmp(provided, s_ext_passkey) != 0) {
+                emit_reply(ctx, "AUTH ERR");
+                return true;
+            }
+        }
         ctx->extended_mode = true;
         emit_reply(ctx, "EXT OK");
         return true;
@@ -136,25 +217,38 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
         emit_reply(ctx, "OK");
         return true;
     }
-    if (ctx->extended_mode && (strcmp(upper, "AT+SNIFF=1") == 0 || strcmp(upper, "AT+SNIFF=0") == 0)) {
+    if (ctx->extended_mode &&
+        (strcmp(upper, "AT+SNIFF=1") == 0 || strcmp(upper, "AT+SNIFF=0") == 0)) {
         ctx->sniff_enabled = (upper[9] == '1');
         emit_reply(ctx, "OK");
         return true;
     }
     if (ctx->extended_mode && strcmp(upper, "AT+STATS") == 0) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "RX:%lu TX:%lu ERR:%lu",
-                 (unsigned long)ctx->rx_frames,
-                 (unsigned long)ctx->tx_frames,
-                 (unsigned long)ctx->err_frames);
+        snprintf(buf, sizeof(buf), "RX:%lu TX:%lu ERR:%lu", (unsigned long)ctx->rx_frames,
+                 (unsigned long)ctx->tx_frames, (unsigned long)ctx->err_frames);
         emit_reply(ctx, buf);
         return true;
     }
-    if (ctx->extended_mode && strcmp(upper, "AT+FACTORY") == 0) {
+    if (ctx->extended_mode &&
+        (strcmp(upper, "AT+FACTORY") == 0 || strcmp(upper, "AT+FACTORY=CONFIRM") == 0)) {
         emit_reply(ctx, "FACTORY RESET");
         if (ctx->cb.factory_reset != NULL) {
             ctx->cb.factory_reset(ctx->cb.user_ctx);
         }
+        return true;
+    }
+    if (strncmp(upper, "AT+SIM:", 7) == 0 || strncmp(upper, "AT+SIM=", 7) == 0) {
+        const char *kv = &upper[7];
+        if (!validate_sim_kv(kv)) {
+            emit_reply(ctx, "?");
+            return true;
+        }
+        if (s_sim_cmd_cb != NULL && s_sim_cmd_cb(kv, ctx->cb.user_ctx) != 0) {
+            emit_reply(ctx, "?");
+            return true;
+        }
+        emit_reply(ctx, "OK");
         return true;
     }
 
@@ -211,8 +305,7 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
     if (strcmp(upper, "ATRV") == 0) {
         uint32_t mv = (ctx->cb.get_vbat_mv != NULL) ? ctx->cb.get_vbat_mv(ctx->cb.user_ctx) : 0U;
         char buf[16];
-        snprintf(buf, sizeof(buf), "%lu.%luV",
-                 (unsigned long)(mv / 1000U),
+        snprintf(buf, sizeof(buf), "%lu.%luV", (unsigned long)(mv / 1000U),
                  (unsigned long)((mv % 1000U + 50U) / 100U));
         emit_reply(ctx, buf);
         return true;
@@ -220,16 +313,14 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
 
     if (strcmp(upper, "ATDP") == 0) {
         char buf[48];
-        snprintf(buf, sizeof(buf), "%s%s",
-                 (ctx->protocol == 0U) ? "AUTO, " : "",
+        snprintf(buf, sizeof(buf), "%s%s", (ctx->protocol == 0U) ? "AUTO, " : "",
                  proto_description(ctx->protocol));
         emit_reply(ctx, buf);
         return true;
     }
     if (strcmp(upper, "ATDPN") == 0) {
         char buf[8];
-        snprintf(buf, sizeof(buf), "%s%X",
-                 (ctx->protocol == 0U) ? "A" : "",
+        snprintf(buf, sizeof(buf), "%s%X", (ctx->protocol == 0U) ? "A" : "",
                  (unsigned)ctx->protocol);
         emit_reply(ctx, buf);
         return true;
@@ -241,7 +332,8 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
             return true;
         }
         ctx->protocol = (uint8_t)p;
-        if (ctx->cb.set_protocol != NULL && ctx->cb.set_protocol(ctx->protocol, ctx->cb.user_ctx) != 0) {
+        if (ctx->cb.set_protocol != NULL &&
+            ctx->cb.set_protocol(ctx->protocol, ctx->cb.user_ctx) != 0) {
             emit_reply(ctx, "UNABLE TO CONNECT");
             return true;
         }
@@ -249,7 +341,8 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
         return true;
     }
 
-    if (strncmp(upper, "ATAT", 4) == 0 && strlen(upper) == 5U && upper[4] >= '0' && upper[4] <= '2') {
+    if (strncmp(upper, "ATAT", 4) == 0 && strlen(upper) == 5U && upper[4] >= '0' &&
+        upper[4] <= '2') {
         ctx->adaptive_timing = (uint8_t)(upper[4] - '0');
         emit_reply(ctx, "OK");
         return true;
@@ -265,29 +358,61 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
         return true;
     }
 
-    if (strncmp(upper, "ATSH", 4) == 0 && strlen(upper) >= 7U) {
-        ctx->tx_header = (uint32_t)strtoul(&upper[4], NULL, 16);
+    if (strncmp(upper, "ATSH", 4) == 0) {
+        uint32_t hdr = 0U;
+        if (parse_can_id_hex(&upper[4], 3U, 8U, 0x1FFFFFFFU, &hdr)) {
+            ctx->tx_header = hdr;
+            emit_reply(ctx, "OK");
+        } else {
+            emit_reply(ctx, "?");
+        }
+        return true;
+    }
+    if (strcmp(upper, "ATCAR") == 0 || strcmp(upper, "ATCRA") == 0) {
+        ctx->rx_filter_id = 0U;
+        ctx->rx_filter_mask = 0U;
         emit_reply(ctx, "OK");
         return true;
     }
-    if (strncmp(upper, "ATCRA", 5) == 0 && strlen(upper) >= 8U) {
-        ctx->rx_filter_id = (uint32_t)strtoul(&upper[5], NULL, 16);
-        emit_reply(ctx, "OK");
+    if (strncmp(upper, "ATCRA", 5) == 0) {
+        uint32_t fid = 0U;
+        if (parse_can_id_hex(&upper[5], 3U, 8U, 0x1FFFFFFFU, &fid)) {
+            ctx->rx_filter_id = fid;
+            ctx->rx_filter_mask = (strlen(&upper[5]) > 3U) ? 0x1FFFFFFFU : 0x7FFU;
+            emit_reply(ctx, "OK");
+        } else {
+            emit_reply(ctx, "?");
+        }
         return true;
     }
-    if (strncmp(upper, "ATCF", 4) == 0 && strlen(upper) >= 7U) {
-        ctx->rx_filter_id = (uint32_t)strtoul(&upper[4], NULL, 16);
-        emit_reply(ctx, "OK");
+    if (strncmp(upper, "ATCF", 4) == 0) {
+        uint32_t fid = 0U;
+        if (parse_can_id_hex(&upper[4], 3U, 8U, 0x1FFFFFFFU, &fid)) {
+            ctx->rx_filter_id = fid;
+            emit_reply(ctx, "OK");
+        } else {
+            emit_reply(ctx, "?");
+        }
         return true;
     }
-    if (strncmp(upper, "ATCM", 4) == 0 && strlen(upper) >= 7U) {
-        ctx->rx_filter_mask = (uint32_t)strtoul(&upper[4], NULL, 16);
-        emit_reply(ctx, "OK");
+    if (strncmp(upper, "ATCM", 4) == 0) {
+        uint32_t fmask = 0U;
+        if (parse_can_id_hex(&upper[4], 3U, 8U, 0x1FFFFFFFU, &fmask)) {
+            ctx->rx_filter_mask = fmask;
+            emit_reply(ctx, "OK");
+        } else {
+            emit_reply(ctx, "?");
+        }
         return true;
     }
-    if (strncmp(upper, "ATFCSH", 6) == 0 && strlen(upper) >= 9U) {
-        ctx->fc_header = (uint32_t)strtoul(&upper[6], NULL, 16);
-        emit_reply(ctx, "OK");
+    if (strncmp(upper, "ATFCSH", 6) == 0) {
+        uint32_t fch = 0U;
+        if (parse_can_id_hex(&upper[6], 3U, 8U, 0x1FFFFFFFU, &fch)) {
+            ctx->fc_header = fch;
+            emit_reply(ctx, "OK");
+        } else {
+            emit_reply(ctx, "?");
+        }
         return true;
     }
     if (strncmp(upper, "ATFCSD", 6) == 0) {
@@ -300,7 +425,8 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
         emit_reply(ctx, "?");
         return true;
     }
-    if (strncmp(upper, "ATFCSM", 6) == 0 && strlen(upper) == 7U && upper[6] >= '0' && upper[6] <= '2') {
+    if (strncmp(upper, "ATFCSM", 6) == 0 && strlen(upper) == 7U && upper[6] >= '0' &&
+        upper[6] <= '2') {
         ctx->fc_mode = (uint8_t)(upper[6] - '0');
         emit_reply(ctx, "OK");
         return true;
@@ -319,8 +445,13 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
         return true;
     }
 
-    if (strcmp(upper, "ATMA") == 0 || strcmp(upper, "ATIGN") == 0) {
-        emit_reply(ctx, (strcmp(upper, "ATIGN") == 0) ? "ON" : "STOPPED");
+    if (strcmp(upper, "ATMA") == 0) {
+        ctx->sniff_enabled = true;
+        emit_reply(ctx, "STOPPED");
+        return true;
+    }
+    if (strcmp(upper, "ATIGN") == 0) {
+        emit_reply(ctx, "ON");
         return true;
     }
 
@@ -328,13 +459,12 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper)
     return true;
 }
 
-static void format_hex_bytes(const elm327_ctx_t *ctx, const uint8_t *bytes, size_t len, char *out, size_t max_out)
-{
+static void format_hex_bytes(const elm327_ctx_t *ctx, const uint8_t *bytes, size_t len, char *out,
+                             size_t max_out) {
     size_t pos = 0U;
     for (size_t i = 0; i < len && pos + 4U < max_out; ++i) {
         int written = snprintf(&out[pos], max_out - pos,
-                               (ctx->spaces && i + 1U < len) ? "%02X " : "%02X",
-                               bytes[i]);
+                               (ctx->spaces && i + 1U < len) ? "%02X " : "%02X", bytes[i]);
         if (written > 0) {
             pos += (size_t)written;
         }
@@ -342,13 +472,14 @@ static void format_hex_bytes(const elm327_ctx_t *ctx, const uint8_t *bytes, size
     out[pos] = '\0';
 }
 
-static void emit_obd_response(const elm327_ctx_t *ctx, uint32_t rx_id, const uint8_t *resp, size_t resp_len)
-{
+static void emit_obd_response(const elm327_ctx_t *ctx, uint32_t rx_id, const uint8_t *resp,
+                              size_t resp_len) {
     char line[96];
     if (resp_len <= 7U) {
         if (ctx->headers) {
             char hdr[16];
-            snprintf(hdr, sizeof(hdr), (rx_id > 0x7FFU) ? "%08lX " : "%03lX ", (unsigned long)rx_id);
+            snprintf(hdr, sizeof(hdr), (rx_id > 0x7FFU) ? "%08lX " : "%03lX ",
+                     (unsigned long)rx_id);
             emit_str(ctx, hdr);
         }
         format_hex_bytes(ctx, resp, resp_len, line, sizeof(line));
@@ -384,8 +515,7 @@ static void emit_obd_response(const elm327_ctx_t *ctx, uint32_t rx_id, const uin
     emit_str(ctx, ">");
 }
 
-static void process_command_line(elm327_ctx_t *ctx)
-{
+static void process_command_line(elm327_ctx_t *ctx) {
     /* Trim trailing spaces; repeat last command if empty CR */
     while (ctx->line_len > 0U && ctx->line_buf[ctx->line_len - 1U] == ' ') {
         ctx->line_len--;
@@ -436,9 +566,9 @@ static void process_command_line(elm327_ctx_t *ctx)
     size_t resp_len = 0U;
     uint32_t rx_id = 0x7E8U;
     ctx->tx_frames++;
-    elm327_bus_status_t st = ctx->cb.send_obd_req(
-        ctx->tx_header, ctx->protocol, ctx->extended_mode,
-        req, (size_t)req_len, resp, sizeof(resp), &resp_len, &rx_id, ctx->cb.user_ctx);
+    elm327_bus_status_t st = ctx->cb.send_obd_req(ctx->tx_header, ctx->protocol, ctx->extended_mode,
+                                                  req, (size_t)req_len, resp, sizeof(resp),
+                                                  &resp_len, &rx_id, ctx->cb.user_ctx);
 
     switch (st) {
     case ELM_STATUS_OK:
@@ -468,8 +598,7 @@ static void process_command_line(elm327_ctx_t *ctx)
     }
 }
 
-void elm327_feed_bytes(elm327_ctx_t *ctx, const uint8_t *data, size_t len)
-{
+void elm327_feed_bytes(elm327_ctx_t *ctx, const uint8_t *data, size_t len) {
     if (ctx == NULL || data == NULL) {
         return;
     }
@@ -499,13 +628,8 @@ void elm327_feed_bytes(elm327_ctx_t *ctx, const uint8_t *data, size_t len)
     }
 }
 
-int elm327_format_slcan_frame(uint32_t id,
-                              bool extd,
-                              const uint8_t *data,
-                              uint8_t dlc,
-                              char *out,
-                              size_t max_out)
-{
+int elm327_format_slcan_frame(uint32_t id, bool extd, const uint8_t *data, uint8_t dlc, char *out,
+                              size_t max_out) {
     if (out == NULL || dlc > 8U || (dlc > 0U && data == NULL)) {
         return -1;
     }
@@ -513,9 +637,9 @@ int elm327_format_slcan_frame(uint32_t id,
     if (max_out < needed) {
         return -1;
     }
-    int pos = extd
-        ? snprintf(out, max_out, "T%08lX%u", (unsigned long)(id & 0x1FFFFFFFUL), (unsigned)dlc)
-        : snprintf(out, max_out, "t%03lX%u", (unsigned long)(id & 0x7FFUL), (unsigned)dlc);
+    int pos =
+        extd ? snprintf(out, max_out, "T%08lX%u", (unsigned long)(id & 0x1FFFFFFFUL), (unsigned)dlc)
+             : snprintf(out, max_out, "t%03lX%u", (unsigned long)(id & 0x7FFUL), (unsigned)dlc);
     if (pos < 0) {
         return -1;
     }

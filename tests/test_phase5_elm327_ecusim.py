@@ -288,7 +288,16 @@ def test_extended_mode_and_security_gating(phase5_lib: ctypes.CDLL) -> None:
     assert h.cmd("14FFFFFF\r") == "54\r\r>"
     assert h.cmd("1901FF\r") == "59 01 FF 01 00 00\r\r>"
 
-    # Extended AT commands: AT+SNIFF, AT+STATS, AT+FACTORY
+    # KWP2000 services (0x81 StartCommunication, 0x3E TesterPresent, 0x21 ReadDataByLocalIdentifier, 0x18 ReadDTCByStatus, 0x82 StopCommunication)
+    assert h.cmd("81\r") == "C1 EF 8F\r\r>"
+    assert h.cmd("3E\r") == "7E\r\r>"
+    assert h.cmd("2101\r").startswith("61 01 ")
+    assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), b"P0100") == 0
+    assert h.cmd("1802FF00\r") == "58 01 01 00 60\r\r>"
+    assert h.cmd("14FF00\r") == "54\r\r>"
+    assert h.cmd("82\r") == "C2\r\r>"
+
+    # Extended AT commands: AT+SNIFF, AT+STATS, AT+FACTORY, AT+SIM, and hex validation
     assert h.cmd("AT+SNIFF=1\r") == "OK\r\r>"
     assert h.ctx.sniff_enabled is True
     stats = h.cmd("AT+STATS\r")
@@ -296,8 +305,33 @@ def test_extended_mode_and_security_gating(phase5_lib: ctypes.CDLL) -> None:
     assert h.cmd("AT+FACTORY\r") == "FACTORY RESET\r\r>"
     assert h.factory_called is True
 
+    assert h.cmd("AT+SIM:RPM=2500\r") == "OK\r\r>"
+    assert h.cmd("AT+SIM:DTC=P0100\r") == "OK\r\r>"
+    assert h.cmd("AT+SIM:DTC=CLEAR\r") == "OK\r\r>"
+    assert h.cmd("AT+SIM:RPM=XYZ\r") == "?\r\r>"
+
+    # Strict hex validation on ATSH / ATCRA / ATCF / ATCM / ATFCSH
+    assert h.cmd("ATSH7E0\r") == "OK\r\r>"
+    assert h.ctx.tx_header == 0x7E0
+    assert h.cmd("ATSHXYZ\r") == "?\r\r>"
+    assert h.ctx.tx_header == 0x7E0
+    assert h.cmd("ATCRA7E8\r") == "OK\r\r>"
+    assert h.ctx.rx_filter_id == 0x7E8 and h.ctx.rx_filter_mask == 0x7FF
+    assert h.cmd("ATCAR\r") == "OK\r\r>"
+    assert h.ctx.rx_filter_id == 0 and h.ctx.rx_filter_mask == 0
+
     assert h.cmd("AT+EXT=0\r") == "OK\r\r>"
     assert h.ctx.sniff_enabled is False
+
+    # Passkey enforcement when configured
+    phase5_lib.elm327_set_ext_passkey(b"SECRET123")
+    try:
+        assert h.cmd("AT+EXT=1\r") == "AUTH ERR\r\r>"
+        assert h.ctx.extended_mode is False
+        assert h.cmd("AT+EXT=1,SECRET123\r") == "EXT OK\r\r>"
+        assert h.ctx.extended_mode is True
+    finally:
+        phase5_lib.elm327_set_ext_passkey(None)
 
 
 def test_slcan_formatter_and_tcp_loopback_e2e(phase5_lib: ctypes.CDLL) -> None:
@@ -377,3 +411,77 @@ def test_car_scanner_and_python_obd_init_sequence(phase5_lib: ctypes.CDLL) -> No
     assert h.cmd("0111\r").startswith("7E8 4111")
     assert h.cmd("ATRV\r") == "12.6V\r\r>"
     assert h.cmd("03\r") == "7E8 4300\r\r>"
+
+
+def test_elm327_parser_fuzzing_and_line_overflow(phase5_lib: ctypes.CDLL) -> None:
+    """Verify ELM327 parser survives line buffer overflow, odd hex, and malformed AT commands."""
+    h = ElmHarness(phase5_lib)
+    h.cmd("ATE0\r")
+
+    # 1. Line buffer overflow (> 64 chars without CR) emits BUFFER FULL and does not corrupt state
+    overlong = "A" * 200 + "\r"
+    assert "BUFFER FULL" in h.cmd(overlong)
+    # Subsequent valid command must work cleanly
+    assert h.cmd("ATI\r") == "ELM327 v1.5\r\r>"
+
+    # 2. Odd-length hex and non-hex characters in OBD requests
+    assert h.cmd("010\r") == "?\r\r>"
+    assert h.cmd("01GG\r") == "?\r\r>"
+
+    # 3. Malformed AT headers/filters/timing and out-of-range AT+SIM parameters
+    for bad_cmd in (
+        "ATSH\r",
+        "ATSH123456789\r",
+        "ATCRA\r",
+        "ATCF\r",
+        "ATCM\r",
+        "ATFCSH\r",
+        "ATSTGG\r",
+        "AT+EXT=1\r",
+    ):
+        resp = h.cmd(bad_cmd)
+        assert resp.endswith("\r\r>")
+
+    # In extended mode, test AT+SIM boundary validation
+    for bad_sim in (
+        "AT+SIM:RPM=-1\r",
+        "AT+SIM:RPM=20000\r",
+        "AT+SIM:SPEED=300\r",
+        "AT+SIM:COOLANT=-50\r",
+        "AT+SIM:COOLANT=250\r",
+        "AT+SIM:VBAT=1000\r",
+        "AT+SIM:DTC=BAD\r",
+        "AT+SIM:UNKNOWN=1\r",
+    ):
+        assert h.cmd(bad_sim) == "?\r\r>"
+
+
+def test_ecu_sim_boundary_dtcs_and_modes(phase5_lib: ctypes.CDLL) -> None:
+    """Verify DTC table saturation (max 16), Mode 02 Freeze Frame, and UDS 0x22/0x2E boundaries."""
+    h = ElmHarness(phase5_lib)
+    h.cmd("ATE0\r")
+
+    # 1. Saturate DTC table (ECU_SIM_MAX_DTCS = 16)
+    for i in range(16):
+        dtc_code = f"P01{i:02X}".encode("ascii")
+        assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), dtc_code) == 0
+    assert h.sim.dtc_count == 16
+
+    # 17th DTC and invalid DTC strings must be rejected (-1) without overflowing
+    assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), b"P0200") == -1
+    assert phase5_lib.ecu_sim_inject_dtc(ctypes.byref(h.sim), b"Z9999") == -1
+    assert h.sim.dtc_count == 16
+
+    # Clear and verify Mode 02 Freeze Frame
+    phase5_lib.ecu_sim_clear_dtcs(ctypes.byref(h.sim))
+    assert h.sim.dtc_count == 0
+    phase5_lib.ecu_sim_set_rpm(ctypes.byref(h.sim), 1500)
+    assert h.cmd("020C\r") == "42 0C 17 70\r\r>"
+
+    # 2. UDS 0x22 (0xF190 VIN, 0x010D speed) & 0x2E invalid VIN length -> NRC 0x31
+    assert h.cmd("AT+EXT=1\r") == "EXT OK\r\r>"
+    phase5_lib.ecu_sim_set_speed(ctypes.byref(h.sim), 88)
+    assert h.cmd("22010D\r") == "62 01 0D 58\r\r>"
+    assert "62 F1 90" in h.cmd("22F190\r")
+    assert h.cmd("2EF190313233\r") == "7F 2E 31\r\r>"
+

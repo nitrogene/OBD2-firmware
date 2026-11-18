@@ -31,14 +31,11 @@ int ecu_sim_inject_dtc(ecu_sim_state_t *sim, const char *dtc_str);
 void ecu_sim_clear_dtcs(ecu_sim_state_t *sim);
 
 /**
- * @brief Handle an OBD-II / UDS request in memory (returns 0 if response produced, -1 if no data/blocked).
+ * @brief Handle an OBD-II / UDS request in memory (returns 0 if response produced, -1 if no
+ * data/blocked).
  */
-int ecu_sim_handle_request(ecu_sim_state_t *sim,
-                           bool extended_unlocked,
-                           const uint8_t *req,
-                           size_t req_len,
-                           uint8_t *out_resp,
-                           size_t max_resp,
+int ecu_sim_handle_request(ecu_sim_state_t *sim, bool extended_unlocked, const uint8_t *req,
+                           size_t req_len, uint8_t *out_resp, size_t max_resp,
                            size_t *out_resp_len);
 
 #ifdef __cplusplus

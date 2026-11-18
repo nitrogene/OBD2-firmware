@@ -13,13 +13,13 @@ extern "C" {
  * @brief Status LED1 (IO2) state machine patterns.
  */
 typedef enum {
-    BSP_LED_OFF = 0,     /**< 0%: Unpowered or Deep Sleep */
-    BSP_LED_BREATHING,   /**< 0.5 Hz PWM ramp: Ready / idle */
-    BSP_LED_BLINK_SLOW,  /**< 1 Hz (500 ms ON / 500 ms OFF): Scanning / init */
-    BSP_LED_SOLID,       /**< 100%: Vehicle bus connected and active */
-    BSP_LED_BURST,       /**< 10 Hz (50 ms bursts): Active frame TX/RX */
-    BSP_LED_SOS,         /**< SOS Morse: Critical fault (overvoltage / Bus-Off) */
-    BSP_LED_MANUAL       /**< Manual PWM duty override */
+    BSP_LED_OFF = 0,    /**< 0%: Unpowered or Deep Sleep */
+    BSP_LED_BREATHING,  /**< 0.5 Hz PWM ramp: Ready / idle */
+    BSP_LED_BLINK_SLOW, /**< 1 Hz (500 ms ON / 500 ms OFF): Scanning / init */
+    BSP_LED_SOLID,      /**< 100%: Vehicle bus connected and active */
+    BSP_LED_BURST,      /**< 10 Hz (50 ms bursts): Active frame TX/RX */
+    BSP_LED_SOS,        /**< SOS Morse: Critical fault (overvoltage / Bus-Off) */
+    BSP_LED_MANUAL      /**< Manual PWM duty override */
 } bsp_led_pattern_t;
 
 /**
