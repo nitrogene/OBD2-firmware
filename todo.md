@@ -13,7 +13,6 @@
 - [ ] **Validate `500 kbps` CAN Echo on Dual-Board Mirror Bench:** Test `can ping` / `can pong` with `JP1` CLOSED on both boards (`~60 Ω`).
 - [ ] **Validate K-Line & Auto-Detection on Hardware:** Verify `logic-analyzer` captures on `H1` for 5-baud & `25 ms` Fast-Init timings, dual-board K-Line echo, and live GM-Daewoo Kalos vehicle test.
 - [ ] **Validate `VIRTUAL_BENCH` Physical Buttons (`GPIO 0` / `GPIO 14`):** Confirm scenario cycling, DTC injection/clear, and `V_BAT` drop simulation on physical LilyGO TTGO T-Display S3 hardware.
-- [ ] **Validate Multi-Transport Lock Arbitration (`transport_stream`):** Test simultaneous BLE + Wi-Fi TCP clients for lock exclusivity, `5000 ms` timeout, and clean release.
 - [ ] **Validate End-to-End Client Compatibility:** Test with `python-OBD`, `ELM327-emulator`, Car Scanner / OBD Fusion, custom Android client app (ELM327 + extended mode), and disconnect / 12V-drop robustness.
 
 ---

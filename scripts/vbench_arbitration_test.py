@@ -48,13 +48,27 @@ async def run_arbitration(ble_name: str, wifi_host: str, wifi_port: int) -> None
             print("  Wi-Fi blocked while BLE holds lock: OK")
         await ble.stop_notify(UUID_FFF1)
 
-    await asyncio.sleep(0.2)
-    with socket.create_connection((wifi_host, wifi_port), timeout=3.0) as tcp:
-        tcp.settimeout(2.0)
-        tcp.sendall(b"ATI\r")
-        resp = tcp.recv(256)
-        assert b"ELM327" in resp, f"Wi-Fi failed after BLE release: {resp!r}"
-        print("  Wi-Fi acquired lock after BLE disconnect: OK")
+    # Windows BLE stack may take 1-3s after BleakClient exits to close the ACL link.
+    # Retry Wi-Fi ATI until BLE_GAP_EVENT_DISCONNECT releases TRANSPORT_ID_BLE.
+    resp = b""
+    tcp = None
+    for attempt in range(10):
+        await asyncio.sleep(0.5)
+        sock = socket.create_connection((wifi_host, wifi_port), timeout=3.0)
+        sock.settimeout(0.8)
+        sock.sendall(b"ATI\r")
+        try:
+            resp = sock.recv(256)
+            if b"ELM327" in resp:
+                tcp = sock
+                break
+        except TimeoutError:
+            pass
+        sock.close()
+
+    assert tcp is not None and b"ELM327" in resp, f"Wi-Fi failed after BLE release: {resp!r}"
+    try:
+        print(f"  Wi-Fi acquired lock after BLE disconnect (attempt {attempt + 1}): OK")
 
         print("[3/3] Wi-Fi holds lock -> BLE must be blocked until Wi-Fi disconnects...")
         async with BleakClient(dev) as ble:
@@ -65,6 +79,8 @@ async def run_arbitration(ble_name: str, wifi_host: str, wifi_port: int) -> None
             except TimeoutError:
                 print("  BLE blocked while Wi-Fi holds lock: OK")
             await ble.stop_notify(UUID_FFF1)
+    finally:
+        tcp.close()
 
     await asyncio.sleep(0.2)
     async with BleakClient(dev) as ble:
