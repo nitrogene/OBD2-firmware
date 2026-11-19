@@ -17,6 +17,7 @@
 #include "twai_driver.h"
 #include "virtual_bench_ui.h"
 
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -506,6 +507,15 @@ void app_main(void) {
     ESP_ERROR_CHECK(transport_stream_init(5000U));
     ESP_ERROR_CHECK(ecu_simulator_init());
     ESP_ERROR_CHECK(virtual_bench_ui_init());
+
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    char fw_ver[64];
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+    snprintf(fw_ver, sizeof(fw_ver), "OBD2-fw %s (VIRTUAL_BENCH)", app_desc->version);
+#else
+    snprintf(fw_ver, sizeof(fw_ver), "OBD2-fw %s (STD)", app_desc->version);
+#endif
+    elm327_set_fw_version(fw_ver);
 
     elm327_register_sim_cmd_cb(elm_sim_cmd_cb);
 

@@ -86,6 +86,7 @@ class EcuSimState(ctypes.Structure):
         ("load_pct", ctypes.c_uint8),
         ("throttle_pct", ctypes.c_uint8),
         ("vbat_mv", ctypes.c_uint32),
+        ("o2_mv", ctypes.c_uint16),
         ("vin", ctypes.c_char * 18),
         ("dtcs", (ctypes.c_uint8 * 2) * 16),
         ("dtc_count", ctypes.c_uint8),
@@ -129,6 +130,7 @@ def phase5_lib(tmp_path_factory: pytest.TempPathFactory) -> ctypes.CDLL:
         ctypes.c_size_t,
     ]
     lib.elm327_format_slcan_frame.restype = ctypes.c_int
+    lib.elm327_set_fw_version.argtypes = [ctypes.c_char_p]
 
     lib.ecu_sim_init.argtypes = [ctypes.POINTER(EcuSimState)]
     lib.ecu_sim_set_rpm.argtypes = [ctypes.POINTER(EcuSimState), ctypes.c_uint16]
@@ -218,6 +220,8 @@ def test_elm327_at_basics_and_formatting(phase5_lib: ctypes.CDLL) -> None:
     assert h.cmd("ATSP6\r") == "OK\r\r>"
     assert h.cmd("ATDP\r") == "ISO 15765-4 (CAN 11/500)\r\r>"
     assert h.cmd("ATDPN\r") == "6\r\r>"
+    phase5_lib.elm327_set_fw_version(b"OBD2-fw v0.4.2-test (STD)")
+    assert h.cmd("AT+VER\r") == "OBD2-fw v0.4.2-test (STD)\r\r>"
     assert h.cmd("ATUNKNOWN\r") == "?\r\r>"
 
 
@@ -400,8 +404,18 @@ def test_car_scanner_and_python_obd_init_sequence(phase5_lib: ctypes.CDLL) -> No
     assert h.cmd("ATH1\r") == "OK\r\r>"
     assert h.cmd("ATSP0\r") == "OK\r\r>"
 
-    # Supported PIDs 01..20 (advertises 04, 05, 0C, 0D, 0F, 11, 20)
-    assert h.cmd("0100\r") == "7E8064100181A8001\r\r>"
+    # Supported PIDs 01..20 (advertises 03, 04, 05, 0C, 0D, 0F, 11, 14, 20)
+    assert h.cmd("0100\r") == "7E8064100381A9001\r\r>"
+    # Fuel System Status (0103): Closed Loop (02) because coolant_c == 85 >= 60
+    assert h.cmd("0103\r") == "7E80441030200\r\r>"
+    # O2 B1S1 (0114): default 450 mV -> 0x5A (90 * 5 mV)
+    assert h.cmd("0114\r") == "7E80441145A80\r\r>"
+    # Cold coolant (< 60 C) -> Open Loop (01); O2 = 40 mV -> 0x08
+    phase5_lib.ecu_sim_set_coolant(ctypes.byref(h.sim), 45)
+    h.sim.o2_mv = 40
+    assert h.cmd("0103\r") == "7E80441030100\r\r>"
+    assert h.cmd("0114\r") == "7E80441140880\r\r>"
+    phase5_lib.ecu_sim_set_coolant(ctypes.byref(h.sim), 85)
     # Poll every advertised PID with headers on, spaces off
     assert h.cmd("0104\r").startswith("7E8034104")
     assert h.cmd("0105\r") == "7E80341057D\r\r>"

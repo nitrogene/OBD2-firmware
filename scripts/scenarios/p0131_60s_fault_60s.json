@@ -1,0 +1,45 @@
+{
+  "name": "P0131 Pre/Post-Fault Context Capture (60s + Fault + 60s)",
+  "description": "Cold start into Closed Loop, O2 B1S1 drop < 80 mV for > 3s, P0131 injection at t=64s, and 60s post-fault deceleration.",
+  "tick_ms": 500,
+  "steps": [
+    {
+      "t_s": 0,
+      "clear_dtc": true,
+      "rpm": 850,
+      "speed": 0,
+      "coolant": 45,
+      "vbat_mv": 14100,
+      "o2_mv": 450,
+      "ramp": true,
+      "o2_osc_min_mv": 150,
+      "o2_osc_max_mv": 750
+    },
+    {
+      "t_s": 60,
+      "rpm": 2600,
+      "speed": 80,
+      "coolant": 85,
+      "o2_mv": 40
+    },
+    {
+      "t_s": 64,
+      "o2_mv": 40,
+      "dtc": "P0131"
+    },
+    {
+      "t_s": 65,
+      "o2_mv": 450,
+      "rpm": 2400,
+      "speed": 80,
+      "ramp": true
+    },
+    {
+      "t_s": 125,
+      "rpm": 900,
+      "speed": 0,
+      "coolant": 88,
+      "o2_mv": 450
+    }
+  ]
+}

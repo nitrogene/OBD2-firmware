@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "comm_ble.h"
+#include "esp_app_desc.h"
 #include "esp_app_format.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -238,6 +239,10 @@ static esp_err_t http_get_root_handler(httpd_req_t *req) {
     if (html == NULL) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
     }
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    char esc_ver[64];
+    html_escape(app_desc->version, esc_ver, sizeof(esc_ver));
+
     snprintf(html, html_cap,
              "<!DOCTYPE html><html><head><meta charset='utf-8'>"
              "<title>OBD2-Scanner Config</title>"
@@ -245,7 +250,7 @@ static esp_err_t http_get_root_handler(httpd_req_t *req) {
              "input,button{width:100%%;padding:8px;margin:4px 0 12px;box-sizing:border-box}"
              "fieldset{margin-bottom:16px;padding:12px}</style></head><body>"
              "<h2>OBD2-Scanner (ELM327)</h2>"
-             "<p>SoftAP: <b>%s</b> (" COMM_WIFI_AP_IP ":35000) | STA: <b>%s</b></p>"
+             "<p>FW: <b>%s</b> | SoftAP: <b>%s</b> (" COMM_WIFI_AP_IP ":35000) | STA: <b>%s</b></p>"
              "<form method='POST' action='/config'><fieldset><legend>Wi-Fi &amp; BLE</legend>"
              "Current AP Password (Auth):<input id='admin_pass' name='admin_pass' type='password' "
              "required maxlength='63'>"
@@ -273,7 +278,7 @@ static esp_err_t http_get_root_handler(httpd_req_t *req) {
              "const r=await fetch('/ota',{method:'POST',headers:{'X-OTA-Auth':p},body:f});"
              "document.getElementById('ota_st').innerText=await r.text();}</script>"
              "</body></html>",
-             esc_ssid, esc_sta, esc_ssid, esc_sta);
+             esc_ver, esc_ssid, esc_sta, esc_ssid, esc_sta);
 
     httpd_resp_set_type(req, "text/html");
     esp_err_t res = httpd_resp_sendstr(req, html);

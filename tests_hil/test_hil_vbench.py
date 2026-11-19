@@ -52,9 +52,11 @@ def test_hil_usb_cdc_cli() -> None:
     try:
         time.sleep(0.2)
         assert "ESP32-S3" in _usb_cmd(ser, "info")
+        assert "App Version :" in _usb_cmd(ser, "info")
         assert "V_BAT" in _usb_cmd(ser, "vbat")
         assert "ECU Sim:" in _usb_cmd(ser, "sim status")
         assert "ELM327 v1.5" in _usb_cmd(ser, "at ATI")
+        assert "OBD2-fw" in _usb_cmd(ser, "at AT+VER")
         assert "OK" in _usb_cmd(ser, "at ATD")
         assert "OK" in _usb_cmd(ser, "at ATE0")
         assert "V" in _usb_cmd(ser, "at ATRV")
@@ -106,7 +108,7 @@ def test_hil_ble_advertising_and_car_scanner_sequence() -> None:
             for at_cmd in ("ATE0", "ATD0", "ATH1", "ATSP0", "ATM0", "ATS0", "ATAT1", "ATAL", "ATST64"):
                 assert "OK" in await send_elm(client, at_cmd), f"{at_cmd} failed"
 
-            assert "7E8064100181A8001" in await send_elm(client, "0100")
+            assert "7E8064100381A9001" in await send_elm(client, "0100")
             assert "7E806412000000001" in await send_elm(client, "0120")
             assert "7E806414040000000" in await send_elm(client, "0140")
             assert "7E804410C" in await send_elm(client, "010C")

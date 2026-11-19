@@ -14,6 +14,7 @@ void ecu_sim_init(ecu_sim_state_t *sim) {
     sim->load_pct = 22U;
     sim->throttle_pct = 14U;
     sim->vbat_mv = 12600U;
+    sim->o2_mv = 450U;
     memcpy(sim->vin, "1G1JC5444R7252367", 18U);
 }
 
@@ -32,6 +33,12 @@ void ecu_sim_set_speed(ecu_sim_state_t *sim, uint8_t speed_kmh) {
 void ecu_sim_set_coolant(ecu_sim_state_t *sim, int16_t coolant_c) {
     if (sim != NULL) {
         sim->coolant_c = coolant_c;
+    }
+}
+
+void ecu_sim_set_o2_mv(ecu_sim_state_t *sim, uint16_t o2_mv) {
+    if (sim != NULL) {
+        sim->o2_mv = (o2_mv > 1275U) ? 1275U : o2_mv;
     }
 }
 
@@ -66,11 +73,16 @@ static int handle_mode01_or_02(const ecu_sim_state_t *sim, uint8_t mode, uint8_t
 
     switch (pid) {
     case 0x00U:              /* Supported PIDs 01..20 */
-        out_resp[2] = 0x18U; /* 04, 05 */
+        out_resp[2] = 0x38U; /* 03, 04, 05 */
         out_resp[3] = 0x1AU; /* 0C, 0D, 0F */
-        out_resp[4] = 0x80U; /* 11 */
+        out_resp[4] = 0x90U; /* 11, 14 */
         out_resp[5] = 0x01U; /* 20 */
         *out_len = 6U;
+        return 0;
+    case 0x03U: /* Fuel System Status: 0x02 = Closed Loop when coolant >= 60 C, else 0x01 Open */
+        out_resp[2] = (sim->coolant_c >= 60) ? 0x02U : 0x01U;
+        out_resp[3] = 0x00U;
+        *out_len = 4U;
         return 0;
     case 0x04U:
         out_resp[2] = (uint8_t)((sim->load_pct * 255U) / 100U);
@@ -98,6 +110,13 @@ static int handle_mode01_or_02(const ecu_sim_state_t *sim, uint8_t mode, uint8_t
         out_resp[2] = (uint8_t)((sim->throttle_pct * 255U) / 100U);
         *out_len = 3U;
         return 0;
+    case 0x14U: { /* O2 Sensor 1 (B1S1) voltage (A * 5 mV) & STFT (B = 0x80 -> 0%) */
+        uint32_t raw_a = (uint32_t)sim->o2_mv / 5U;
+        out_resp[2] = (raw_a > 255U) ? 255U : (uint8_t)raw_a;
+        out_resp[3] = 0x80U;
+        *out_len = 4U;
+        return 0;
+    }
     case 0x20U: /* Supported PIDs 21..40 */
         out_resp[2] = 0x00U;
         out_resp[3] = 0x00U;

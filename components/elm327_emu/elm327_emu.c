@@ -85,6 +85,7 @@ static int parse_hex_bytes(const char *s, uint8_t *out, size_t max_out) {
 }
 
 static char s_ext_passkey[32] = {0};
+static char s_fw_version[64] = "OBD2-fw unknown";
 static elm327_sim_cmd_cb_t s_sim_cmd_cb = NULL;
 
 void elm327_set_ext_passkey(const char *passkey) {
@@ -101,6 +102,13 @@ void elm327_set_ext_passkey(const char *passkey) {
 
 void elm327_register_sim_cmd_cb(elm327_sim_cmd_cb_t cb) {
     s_sim_cmd_cb = cb;
+}
+
+void elm327_set_fw_version(const char *fw_ver) {
+    if (fw_ver == NULL || fw_ver[0] == '\0') {
+        return;
+    }
+    snprintf(s_fw_version, sizeof(s_fw_version), "%s", fw_ver);
 }
 
 static bool parse_can_id_hex(const char *s, size_t min_len, size_t max_len, uint32_t max_val,
@@ -449,6 +457,10 @@ static bool handle_at_command(elm327_ctx_t *ctx, const char *upper) {
     if (strcmp(upper, "ATMA") == 0) {
         ctx->sniff_enabled = true;
         emit_reply(ctx, "STOPPED");
+        return true;
+    }
+    if (strcmp(upper, "AT+VER") == 0) {
+        emit_reply(ctx, s_fw_version);
         return true;
     }
     if (strcmp(upper, "ATIGN") == 0) {

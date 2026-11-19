@@ -161,7 +161,7 @@ Incoming byte streams from BLE and Wi-Fi pass through `components/transport_stre
 - **Standard ELM327 v1.5 AT Commands:** `ATZ`, `ATI`, `AT@1`, `ATWS`, `ATD`, `ATPC`, `ATE0`/`1`, `ATL0`/`1`, `ATS0`/`1`, `ATH0`/`1`, `ATRV` (via `power_mgmt`), `ATSP0..9`, `ATDP`, `ATDPN`, `ATAT0..2`, `ATST`, `ATSH`, `ATCRA`, `ATCF`, `ATCM`, `ATCAF0`/`1`, `ATFCSH`, `ATFCSD`, `ATFCSM`, `ATMA`, `ATSI`, `ATFI`, bare `\r` command repeat, and ISO-TP `0:`/`1:` multi-line formatting.
 - **Extended Custom Mode (`AT+EXT=1[,<passkey>]` / `AT+EXT=0`):**
   - Unlocks state-modifying/UDS/KWP2000 services (`0x11`, `0x27`, `0x28`, `0x2E`, `0x2F`, `0x30`, `0x31`, `0x34`–`0x37`, `0x3B`, `0x3D`, `0x85`, plus UDS `0x10`/`0x22`/`0x19`/`0x14` in `ecu_simulator`).
-  - Extended AT commands: `AT+SNIFF=1/0`, `AT+STATS` (`RX`/`TX`/`ERR` counters), `AT+SIM:<KEY>=<VAL>` (wireless simulator control), `AT+FACTORY` (confirmed NVS erase & reboot), plus `elm327_format_slcan_frame()` (`t<III><L><DATA>\r` / `T<IIIIIIII><L><DATA>\r`).
+  - Extended AT commands: `AT+VER` (firmware tag/commit version, read-only), `AT+SNIFF=1/0`, `AT+STATS` (`RX`/`TX`/`ERR` counters), `AT+SIM:<KEY>=<VAL>` (wireless simulator control), `AT+FACTORY` (confirmed NVS erase & reboot), plus `elm327_format_slcan_frame()` (`t<III><L><DATA>\r` / `T<IIIIIIII><L><DATA>\r`).
 
 ### 6.5 ECU Simulator & USB-C CLI (`components/ecu_simulator`, `main/cli_commands.c`)
 - **In-Memory OBD/UDS Engine (`ecu_sim_core.c`):** Responds to Modes `01` (PIDs `00`, `04`, `05`, `0C`, `0D`, `0F`, `11`, `42`), `02`, `03`, `04`, `09` (`02` VIN), and UDS `0x10`/`0x22`/`0x2E`/`0x19`/`0x14` with DTC injection/clearing.

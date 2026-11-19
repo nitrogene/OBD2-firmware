@@ -101,6 +101,11 @@ void elm327_set_ext_passkey(const char *passkey);
  */
 void elm327_register_sim_cmd_cb(elm327_sim_cmd_cb_t cb);
 
+/**
+ * @brief Set the firmware version string returned by AT+VER.
+ */
+void elm327_set_fw_version(const char *fw_ver);
+
 #ifdef __cplusplus
 }
 #endif

@@ -65,6 +65,7 @@ The companion Android app connects to the ESP32-S3 OBD-II dongle over **BLE 5.0*
 - By default (`extended_unlocked == false`), state-modifying and actuator/memory SIDs (`0x11`, `0x27`, `0x28`, `0x2E`, `0x2F`, `0x30`, `0x31`, `0x34`–`0x37`, `0x3B`, `0x3D`, `0x85`) are blocked (`NRC 0x33`).
 - Unlock with `AT+EXT=1` (or `AT+EXT=1,<passkey>` when a passkey is configured) and relock with `AT+EXT=0`.
 - Additional extended commands:
+  - `AT+VER`: returns the firmware Git tag/commit and build profile (e.g., `OBD2-fw v0.4.2-3-g56e9693 (VIRTUAL_BENCH)`), available without unlocking `AT+EXT`.
   - `AT+STATS`: returns `RX` / `TX` / `ERR` frame counters.
   - `AT+SNIFF=1` / `AT+SNIFF=0`: raw CAN SLCAN monitor stream (`t<III><L><DATA>\r` / `T<IIIIIIII><L><DATA>\r`).
   - `AT+SIM:<KEY>=<VAL>`: remote control of `ecu_simulator` (`RPM=`, `SPD=`, `CLT=`, `VBAT=`, `DTC=P0301|CLEAR`, `START`, `STOP`).

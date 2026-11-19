@@ -16,6 +16,7 @@
 #include "driver/gpio.h"
 #include "driver/twai.h"
 #include "driver/uart.h"
+#include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_console.h"
 #include "esp_flash.h"
@@ -94,7 +95,15 @@ static int cmd_info(int argc, char **argv) {
     (void)esp_flash_get_size(NULL, &flash_size);
     size_t psram_size = esp_psram_get_size();
 
-    printf("OBD2-firmware MODE_BRINGUP\n");
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    printf("OBD2-firmware (%s)\n",
+#ifdef CONFIG_OBD2_VIRTUAL_BENCH
+           "VIRTUAL_BENCH"
+#else
+           "STANDARD"
+#endif
+    );
+    printf("  App Version : %s (%s %s)\n", app_desc->version, app_desc->date, app_desc->time);
     printf("  IDF Version : %s\n", esp_get_idf_version());
     printf("  Chip        : ESP32-S3 rev v%d.%d (%d cores)\n", chip.revision / 100,
            chip.revision % 100, chip.cores);
@@ -387,9 +396,10 @@ static int cmd_sim(int argc, char **argv) {
     ecu_sim_state_t *sim = ecu_simulator_state();
     if (argc < 2 || strcmp(argv[1], "status") == 0) {
         ecu_simulator_lock();
-        printf("ECU Sim: RPM=%u Speed=%u km/h Coolant=%d C V_BAT=%lu mV DTCs=%u VIN=%s\n",
+        printf("ECU Sim: RPM=%u Speed=%u km/h Coolant=%d C O2=%u mV V_BAT=%lu mV DTCs=%u VIN=%s\n",
                (unsigned)sim->rpm, (unsigned)sim->speed_kmh, (int)sim->coolant_c,
-               (unsigned long)sim->vbat_mv, (unsigned)sim->dtc_count, sim->vin);
+               (unsigned)sim->o2_mv, (unsigned long)sim->vbat_mv, (unsigned)sim->dtc_count,
+               sim->vin);
         ecu_simulator_unlock();
         return 0;
     }
@@ -416,8 +426,8 @@ static int cmd_sim(int argc, char **argv) {
     }
 
     if (argc < 3) {
-        printf("Usage: sim <status|rpm <v>|speed <v>|coolant <v>|vbat <mv>|dtc <P0100>|clear|start "
-               "[can|kline|both]|stop>\n");
+        printf("Usage: sim <status|rpm <v>|speed <v>|coolant <v>|o2 <mv>|vbat <mv>|dtc "
+               "<P0100>|clear|start [can|kline|both]|stop>\n");
         return 1;
     }
 
@@ -472,6 +482,16 @@ static int cmd_sim(int argc, char **argv) {
         sim->vbat_mv = (uint32_t)val;
         ecu_simulator_unlock();
         printf("ECU Sim: simulated V_BAT=%ld mV\n", val);
+    } else if (strcmp(argv[1], "o2") == 0) {
+        long val = 0;
+        if (!parse_long_arg(argv[2], &val) || val < 0 || val > 1275) {
+            printf("Error: o2 must be an integer 0..1275 mV\n");
+            return 1;
+        }
+        ecu_simulator_lock();
+        ecu_sim_set_o2_mv(sim, (uint16_t)val);
+        ecu_simulator_unlock();
+        printf("ECU Sim: O2=%ld mV\n", val);
     } else {
         printf("Unknown subcommand '%s'\n", argv[1]);
         return 1;
